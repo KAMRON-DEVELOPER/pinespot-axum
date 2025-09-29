@@ -19,6 +19,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing::info;
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{
     features::{listings, users},
@@ -48,12 +49,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::init().await;
 
-    tracing_subscriber::fmt()
-        .with_max_level(config.tracing_level)
-        .with_target(true)
-        .with_file(true)
-        .with_line_number(true)
-        .with_thread_ids(false)
+    // tracing_subscriber::fmt()
+    //     .with_max_level(config.tracing_level)
+    //     .with_target(true)
+    //     .with_file(true)
+    //     .with_line_number(true)
+    //     .with_thread_ids(false)
+    //     .init();
+
+    let filter = EnvFilter::new("pinespot-axum=debug,tower_http=warn,hyper=warn");
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_file(true)
+                .with_line_number(true),
+        )
         .init();
 
     // let tls_config = build_tls_config(&config)?;
@@ -83,9 +95,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let cors = CorsLayer::new()
         .allow_origin([
-            HeaderValue::from_str("http://127.0.0.1:3000").unwrap(),
-            HeaderValue::from_str("http://127.0.0.1:5173").unwrap(),
-            HeaderValue::from_str("https://pinespot.uz").unwrap(),
+            HeaderValue::from_static("http://127.0.0.1:3000"),
+            HeaderValue::from_static("http://localhost:3000"),
+            HeaderValue::from_static("http://127.0.0.1:5173"),
+            HeaderValue::from_static("http://localhost:5173"),
+            HeaderValue::from_static("https://pinespot.uz"),
         ])
         .allow_methods([
             Method::GET,

@@ -303,7 +303,7 @@ impl IntoResponse for AppError {
             Self::ValidatorValidationError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             Self::ValidatorValidationErrors(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             Self::RequestTokenError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            Self::NotFoundError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e),
+            Self::NotFoundError(e) => (StatusCode::NOT_FOUND, e),
             Self::InvalidImageFormatError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e),
         };
 

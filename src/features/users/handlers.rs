@@ -87,7 +87,7 @@ pub async fn google_oauth_handler(
     let mut pkce_verifier_cookie =
         Cookie::new("pkce_verifier", pkce_code_verifier.secret().to_string());
     pkce_verifier_cookie.set_http_only(true);
-    pkce_verifier_cookie.set_same_site(SameSite::None);
+    pkce_verifier_cookie.set_same_site(SameSite::Lax);
     pkce_verifier_cookie.set_secure(false);
     let jar = jar.add(pkce_verifier_cookie);
 
@@ -328,7 +328,77 @@ pub async fn complete_profile_handler(
     Ok((jar, response))
 }
 
-pub async fn login_handler(
+pub async fn signup_handler(
+    jar: PrivateCookieJar,
+    State(database): State<Database>,
+    State(config): State<Config>,
+    TypedHeader(_user_agent): TypedHeader<UserAgent>,
+    ConnectInfo(_addr): ConnectInfo<SocketAddr>,
+    Json(login_schema): Json<LoginSchema>,
+) -> Result<impl IntoResponse, AppError> {
+    debug!("login_schema is {:#?}", login_schema);
+
+    let user = login_schema.verify(&database).await?.ok_or_else(|| {
+        AppError::NotFoundError("User not found with this username and password".to_string())
+    })?;
+
+    let new_access = create_token(&config, user.id, false)?;
+    let new_refresh = create_token(&config, user.id, true)?;
+
+    let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
+    let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
+        .http_only(true)
+        .secure(config.cookie_secure.unwrap_or(true))
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::days(max_age_days))
+        .path("/");
+
+    let jar = jar.add(refresh_cookie);
+
+    let tokens = Tokens {
+        access_token: new_access,
+        refresh_token: Some(new_refresh),
+    };
+    let response = Json(AuthResponse { user, tokens });
+    Ok((jar, response))
+}
+
+pub async fn verification_handler(
+    jar: PrivateCookieJar,
+    State(database): State<Database>,
+    State(config): State<Config>,
+    TypedHeader(_user_agent): TypedHeader<UserAgent>,
+    ConnectInfo(_addr): ConnectInfo<SocketAddr>,
+    Json(login_schema): Json<LoginSchema>,
+) -> Result<impl IntoResponse, AppError> {
+    debug!("login_schema is {:#?}", login_schema);
+
+    let user = login_schema.verify(&database).await?.ok_or_else(|| {
+        AppError::NotFoundError("User not found with this username and password".to_string())
+    })?;
+
+    let new_access = create_token(&config, user.id, false)?;
+    let new_refresh = create_token(&config, user.id, true)?;
+
+    let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
+    let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
+        .http_only(true)
+        .secure(config.cookie_secure.unwrap_or(true))
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::days(max_age_days))
+        .path("/");
+
+    let jar = jar.add(refresh_cookie);
+
+    let tokens = Tokens {
+        access_token: new_access,
+        refresh_token: Some(new_refresh),
+    };
+    let response = Json(AuthResponse { user, tokens });
+    Ok((jar, response))
+}
+
+pub async fn signin_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,
     State(config): State<Config>,

@@ -14,7 +14,12 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profile", get(handlers::get_user_handler))
         .route("/api/v1/profile", patch(handlers::update_user_handler))
         .route("/api/v1/profile", delete(handlers::delete_user_handler))
-        .route("/api/v1/auth/login", post(handlers::login_handler))
+        .route("/api/v1/auth/signin", post(handlers::signin_handler))
+        .route("/api/v1/auth/signup", delete(handlers::signup_handler))
+        .route(
+            "/api/v1/auth/verification",
+            delete(handlers::verification_handler),
+        )
         .route("/api/v1/auth/refresh", delete(handlers::refresh_handler))
         .route("/api/v1/auth/google/me", get(handlers::get_oauth_user))
         .route(

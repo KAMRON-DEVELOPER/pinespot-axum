@@ -41,12 +41,9 @@ pub struct User {
 #[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
 #[sqlx(default)]
 pub struct OAuthUser {
-    pub id: Uuid,
-    pub exp: DateTime<Utc>,
-    pub iat: DateTime<Utc>,
-    pub iss: String,
+    pub id: Option<Uuid>,
+    pub exp: Option<DateTime<Utc>>,
     pub sub: String,
-    pub at_hash: Option<String>,
     pub email: Option<String>,
     pub family_name: Option<String>,
     pub given_name: Option<String>,

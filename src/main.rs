@@ -8,15 +8,15 @@ use std::net::SocketAddr;
 use std::result::Result::Ok;
 
 use axum::{
-    extract::{ConnectInfo, MatchedPath, Request},
-    http::{HeaderValue, Method, StatusCode},
+    extract::ConnectInfo,
+    http::{self, HeaderValue, Method, StatusCode},
     response::IntoResponse,
 };
 use axum_extra::extract::cookie::Key;
 use tokio::signal;
 use tower_http::{
     cors::{Any, CorsLayer},
-    trace::TraceLayer,
+    trace::{DefaultOnResponse, TraceLayer},
 };
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -40,31 +40,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Loaded .env file from {}", path.display());
         }
         Err(dotenvy::Error::Io(ref err)) if err.kind() == std::io::ErrorKind::NotFound => {
-            tracing::warn!(".env file not found, continuing without it");
+            println!(".env file not found, continuing without it");
         }
         Err(e) => {
-            tracing::warn!("Couldn't load .env file: {}", e);
+            println!("Couldn't load .env file: {}", e);
         }
     }
 
     let config = Config::init().await;
 
-    // tracing_subscriber::fmt()
-    //     .with_max_level(config.tracing_level)
-    //     .with_target(true)
-    //     .with_file(true)
-    //     .with_line_number(true)
-    //     .with_thread_ids(false)
-    //     .init();
-
-    let filter = EnvFilter::new("pinespot-axum=debug,tower_http=warn,hyper=warn");
+    let filter = EnvFilter::new("pinespot_axum=debug,tower_http=warn,hyper=warn,reqwest=warn");
     tracing_subscriber::registry()
         .with(filter)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_target(true)
                 .with_file(true)
-                .with_line_number(true),
+                .with_line_number(true)
+                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW),
         )
         .init();
 
@@ -117,24 +110,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .fallback(not_found_handler)
         .layer(
             TraceLayer::new_for_http()
-                // Create our own span for the request and include the matched path. The matched
-                // path is useful for figuring out which handler the request was routed to.
-                .make_span_with(|req: &Request| {
-                    let method = req.method();
-                    let uri = req.uri();
-
-                    // axum automatically adds this extension.
-                    let matched_path = req
+                .on_request(|request: &http::Request<_>, _span: &tracing::Span| {
+                    let method = request.method();
+                    let uri = request.uri();
+                    let matched_path = request
                         .extensions()
-                        .get::<MatchedPath>()
-                        .map(|matched_path| matched_path.as_str());
+                        .get::<axum::extract::MatchedPath>()
+                        .map(|p| p.as_str())
+                        .unwrap_or("<unknown>");
 
-                    tracing::debug_span!("request", %method, %uri, matched_path)
+                    info!("{} {} {}", matched_path, method, uri);
                 })
-                // By default `TraceLayer` will log 5xx responses but we're doing our specific
-                // logging of errors so disable that
-                .on_failure(()),
+                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
         )
+        // .layer(
+        //     TraceLayer::new_for_http()
+        //         // Create our own span for the request and include the matched path. The matched
+        //         // path is useful for figuring out which handler the request was routed to.
+        //         .make_span_with(|req: &Request| {
+        //             let method = req.method();
+        //             let uri = req.uri();
+        //             // axum automatically adds this extension.
+        //             let matched_path = req
+        //                 .extensions()
+        //                 .get::<MatchedPath>()
+        //                 .map(|matched_path| matched_path.as_str());
+        //             tracing::debug_span!("request ", %method, %uri, matched_path)
+        //         })
+        //         // By default `TraceLayer` will log 5xx responses but we're doing our specific
+        //         // logging of errors so disable that
+        //         .on_failure(()),
+        // )
         .with_state(app_state)
         .layer(cors);
 

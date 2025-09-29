@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use bcrypt::{DEFAULT_COST, hash};
+use serde_json::Value;
 use std::net::SocketAddr;
 
 use object_store::path::Path as ObjectStorePath;
@@ -29,7 +30,7 @@ use axum_extra::{
     extract::{PrivateCookieJar, cookie::Cookie},
     headers::{Authorization, UserAgent, authorization::Bearer},
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope, TokenResponse,
 };
@@ -105,7 +106,7 @@ pub async fn google_oauth_callback_handler(
         .get("pkce_verifier")
         .map(|cookie| PkceCodeVerifier::new(cookie.value().to_string()))
         .ok_or(AppError::PkceCodeVerifierNotFoundError)?;
-
+ 
     let token_response = oauth_client
         .exchange_code(AuthorizationCode::new(query.code))
         .set_pkce_verifier(pkce_verifier)
@@ -113,20 +114,28 @@ pub async fn google_oauth_callback_handler(
         .request_async(&http_client)
         .await?;
 
-    let oauth_access_token = token_response.access_token().secret();
-    let _oauth_refresh_token = token_response.refresh_token().map(|rt| rt.secret());
+    let access_token = token_response.access_token().secret();
 
-    let oauth_user_response = http_client
+    let user_info_response = http_client
         .get("https://openidconnect.googleapis.com/v1/userinfo")
-        .bearer_auth(oauth_access_token.clone())
+        .bearer_auth(access_token.clone())
         .send()
         .await?;
-    let oauth_user = oauth_user_response.json::<OAuthUser>().await?;
-    debug!("oauth user: {:?}", oauth_user);
+    debug!("user_info_response: {:#?}", user_info_response);
+
+    // let oauth_user_json = user_info_response.json::<Value>().await?;
+    let oauth_user_text = user_info_response.text().await?;
+    let oauth_user_json: Value = serde_json::from_str(&oauth_user_text)?;
+    debug!("oauth_user_text: {:#?}", oauth_user_text);
+    debug!("oauth_user_json: {:#?}", oauth_user_json);
+
+    // let oauth_user = user_info_response.json::<OAuthUser>().await?;
+    let oauth_user: OAuthUser = serde_json::from_str(&oauth_user_text)?;
+    debug!("oauth_user: {:#?}", oauth_user);
 
     let phone_number_response = http_client
         .get("https://people.googleapis.com/v1/people/me?personFields=phoneNumbers")
-        .bearer_auth(oauth_access_token.clone())
+        .bearer_auth(access_token.clone())
         .send()
         .await?;
     let phone_number = phone_number_response.json::<PhoneResponse>().await?;
@@ -138,17 +147,16 @@ pub async fn google_oauth_callback_handler(
         .and_then(|v| v.first())
         .map(|p| &p.value);
 
+    let  exp = Utc::now() + Duration::minutes(10);
+  
     let oauth_user_id = sqlx::query_scalar!(
         r#"
-            INSERT INTO oauth_users (exp, iat, iss, sub, at_hash, email, family_name, given_name, name, picture, phone_number)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            INSERT INTO oauth_users (exp, sub , email, family_name, given_name, name, picture, phone_number)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id
         "#,
-        oauth_user.exp,
-        oauth_user.iat,
-        oauth_user.iss,
-        oauth_user.sub,
-        oauth_user.at_hash,
+        exp,
+        oauth_user.sub, 
         oauth_user.email,
         oauth_user.family_name,
         oauth_user.given_name,
@@ -158,16 +166,16 @@ pub async fn google_oauth_callback_handler(
     )
     .fetch_one(&database.pool)
     .await?;
-
-    let exp_chrono = oauth_user.exp;
-    let exp_offset = OffsetDateTime::from_unix_timestamp(exp_chrono.timestamp()).unwrap();
+ 
+    let expire = OffsetDateTime::from_unix_timestamp(exp.timestamp()).unwrap();
 
     let mut oauth_user_id_cookie = Cookie::new("oauth_user_id", oauth_user_id.to_string());
     oauth_user_id_cookie.set_http_only(true);
     oauth_user_id_cookie.set_same_site(SameSite::None);
     oauth_user_id_cookie.set_secure(false);
-    oauth_user_id_cookie.set_expires(exp_offset);
+    oauth_user_id_cookie.set_expires(expire);
     let jar = jar.add(oauth_user_id_cookie);
+
 
     Ok((jar, Redirect::to("/complete-profile")))
 }
@@ -187,7 +195,7 @@ pub async fn get_oauth_user(
     .await?
     .ok_or(AppError::OAuthUserNotFoundError)?;
 
-    if oauth_user.exp <= Utc::now() {
+    if oauth_user.exp.unwrap() <= Utc::now() {
         sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
             .execute(&database.pool)
             .await?;
@@ -222,7 +230,7 @@ pub async fn complete_profile_handler(
     .await?
     .ok_or(AppError::OAuthUserNotFoundError)?;
 
-    if oauth_user.exp <= Utc::now() {
+    if oauth_user.exp.unwrap() <= Utc::now() {
         sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
             .execute(&database.pool)
             .await?;

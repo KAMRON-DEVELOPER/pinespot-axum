@@ -101,10 +101,7 @@ CREATE TABLE favorites (
 CREATE TABLE oauth_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     exp TIMESTAMPTZ NOT NULL,
-    iat TIMESTAMPTZ NOT NULL,
-    iss VARCHAR(255) NOT NULL,
     sub VARCHAR(255) NOT NULL,
-    at_hash VARCHAR(255),
     email VARCHAR(100),
     family_name VARCHAR(100),
     given_name VARCHAR(100),

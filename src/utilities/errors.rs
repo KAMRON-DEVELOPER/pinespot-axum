@@ -129,12 +129,15 @@ pub enum AppError {
     RustlsError(#[from] rustls::Error),
     #[error("Invalid image format error")]
     InvalidImageFormatError(String),
+    #[error("Serde json error")]
+    SerdejsonError(#[from] serde_json::Error),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
             Self::IoError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::SerdejsonError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             Self::InvalidPemError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::RustlsError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::InvalidCaCertError(e) => (

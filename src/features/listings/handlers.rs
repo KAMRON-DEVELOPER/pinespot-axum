@@ -13,13 +13,12 @@ use crate::{
         schemas::Pagination,
     },
     services::database::Database,
-    utilities::{errors::AppError, session::Session},
+    utilities::{errors::AppError, jwt::Claims},
 };
 
 #[axum::debug_handler]
 pub async fn get_many_listings_handler(
     State(database): State<Database>,
-    session: Session,
     Query(pagination): Query<Pagination>,
 ) -> Result<impl IntoResponse, AppError> {
     pagination.validate()?;
@@ -27,11 +26,10 @@ pub async fn get_many_listings_handler(
     let listings = sqlx::query_as!(
         Listing,
         r#"
-            SELECT * FROM listings where owner_id = $1
+            SELECT * FROM listings
             ORDER BY updated_at DESC
-            OFFSET $2 LIMIT $3
+            OFFSET $1 LIMIT $2
         "#,
-        session.user_id,
         pagination.offset,
         pagination.limit
     )
@@ -47,15 +45,13 @@ pub async fn get_many_listings_handler(
 #[axum::debug_handler]
 pub async fn get_one_listing_handler(
     State(database): State<Database>,
-    session: Session,
     Path(listing_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
     let listing = sqlx::query_as!(
         Listing,
         r#"
-            SELECT * FROM listings where owner_id = $1 AND id = $2
+            SELECT * FROM listings where id = $1
         "#,
-        session.user_id,
         listing_id
     )
     .fetch_one(&database.pool)
@@ -65,15 +61,15 @@ pub async fn get_one_listing_handler(
 }
 
 pub async fn delete_listing_handler(
-    session: Session,
     Path(listing_id): Path<Uuid>,
     State(database): State<Database>,
+    claims: Claims,
 ) -> Result<impl IntoResponse, AppError> {
     sqlx::query_scalar!(
         r#"
             DELETE FROM listings where owner_id = $1 AND id = $2
         "#,
-        session.user_id,
+        claims.sub,
         listing_id
     )
     .execute(&database.pool)

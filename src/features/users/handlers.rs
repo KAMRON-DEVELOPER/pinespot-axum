@@ -4,8 +4,8 @@ use crate::{
     utilities::{
         config::Config,
         errors::AppError,
-        jwt::{TokenType, create_token, verify_token},
-        session::{OauthUserId, OptionalOauthUserId, Session},
+        jwt::{Claims, TokenType, create_token, verify_token},
+        session::{OauthUserId, OptionalOauthUserId},
     },
 };
 use bcrypt::{DEFAULT_COST, hash};
@@ -364,10 +364,10 @@ pub async fn login_handler(
 }
 
 pub async fn get_user_handler(
-    session: Session,
+    claims: Claims,
     State(database): State<Database>,
 ) -> Result<impl IntoResponse, AppError> {
-    debug!("claims: {:#?}", session);
+    debug!("claims: {:#?}", claims);
 
     let user = sqlx::query_as!(
         User,
@@ -386,7 +386,7 @@ pub async fn get_user_handler(
                 updated_at
             FROM users WHERE id = $1
         "#,
-        session.user_id
+        claims.sub
     )
     .fetch_optional(&database.pool)
     .await?
@@ -398,12 +398,12 @@ pub async fn get_user_handler(
 pub async fn update_user_handler() {}
 
 pub async fn delete_user_handler(
-    session: Session,
+    claims: Claims,
     State(database): State<Database>,
 ) -> Result<impl IntoResponse, AppError> {
-    debug!("claims: {:#?}", session);
+    debug!("claims: {:#?}", claims);
 
-    let query_result = sqlx::query!("DELETE FROM users WHERE id = $1", session.user_id)
+    let query_result = sqlx::query!("DELETE FROM users WHERE id = $1", claims.sub)
         .execute(&database.pool)
         .await?;
 

@@ -11,6 +11,7 @@ use tracing::{Level, warn};
 
 #[derive(Clone, Debug)]
 pub struct Config {
+    pub server_addres: String,
     pub base_dir: PathBuf,
     pub debug: bool,
     pub tracing_level: Level,
@@ -34,9 +35,15 @@ pub struct Config {
     pub gcs_bucket_name: Option<String>,
     pub gcp_credentials: Option<String>,
     pub gcp_credentials_path: Option<PathBuf>,
+
     pub google_oauth_client_id: Option<String>,
     pub google_oauth_client_secret: Option<String>,
     pub google_oauth_redirect_url: Option<String>,
+
+    pub github_oauth_client_id: Option<String>,
+    pub github_oauth_client_secret: Option<String>,
+    pub github_oauth_redirect_url: Option<String>,
+
     pub key: Option<String>,
 
     // S3
@@ -68,11 +75,21 @@ pub struct Config {
 
 impl Config {
     pub async fn init() -> Self {
+        let server_addres = get_config_value(
+            "SERVER_ADDRES",
+            Some("SERVER_ADDRES"),
+            None,
+            Some("0.0.0.0:8001".to_string()),
+        )
+        .await
+        .unwrap();
+
         let base_dir = find_project_root().unwrap_or_else(|| PathBuf::from("."));
 
         let debug = get_config_value("DEBUG", Some("DEBUG"), None, Some(false))
             .await
             .unwrap();
+
         let tracing_level = get_config_value(
             "TRACING_LEVEL",
             Some("TRACING_LEVEL"),
@@ -141,6 +158,7 @@ impl Config {
             None,
         )
         .await;
+
         let google_oauth_client_id = get_config_value(
             "GOOGLE_OAUTH_CLIENT_ID",
             Some("GOOGLE_OAUTH_CLIENT_ID"),
@@ -162,6 +180,29 @@ impl Config {
             None,
         )
         .await;
+
+        let github_oauth_client_id = get_config_value(
+            "GITHUB_OAUTH_CLIENT_ID",
+            Some("GITHUB_OAUTH_CLIENT_ID"),
+            None,
+            None,
+        )
+        .await;
+        let github_oauth_client_secret = get_config_value(
+            "GITHUB_OAUTH_CLIENT_SECRET",
+            Some("GITHUB_OAUTH_CLIENT_SECRET"),
+            None,
+            None,
+        )
+        .await;
+        let github_oauth_redirect_url = get_config_value(
+            "GITHUB_OAUTH_REDIRECT_URL",
+            Some("GITHUB_OAUTH_REDIRECT_URL"),
+            None,
+            None,
+        )
+        .await;
+
         let key = get_config_value("KEY", Some("KEY"), None, None).await;
 
         let s3_access_key_id =
@@ -229,6 +270,7 @@ impl Config {
             get_config_value("ssl_mode", Some("SSL_MODE"), None, Some(PgSslMode::Disable)).await;
 
         Config {
+            server_addres,
             debug,
             tracing_level,
             base_dir,
@@ -247,6 +289,9 @@ impl Config {
             google_oauth_client_id,
             google_oauth_client_secret,
             google_oauth_redirect_url,
+            github_oauth_client_id,
+            github_oauth_client_secret,
+            github_oauth_redirect_url,
             key,
             s3_access_key_id,
             s3_secret_key,

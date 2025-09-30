@@ -25,12 +25,15 @@ use crate::{
     features::{listings, users},
     services::{
         database::Database,
-        google_oauth::build_google_oauth_client,
-        google_oauth_openidconnect::build_google_oauth_openidconnect_client,
         redis::Redis,
         s3::{build_gcs, build_s3},
     },
-    utilities::{app_state::AppState, config::Config},
+    utilities::{
+        app_state::AppState,
+        config::Config,
+        google_oauth_openidconnect::build_google_oauth_openidconnect_client,
+        oauth_client_builder::{build_github_oauth_client, build_google_oauth_client},
+    },
 };
 
 #[tokio::main]
@@ -66,7 +69,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::new(&config).await?;
     let redis = Redis::new(&config).await?;
     let key = Key::from(config.key.as_ref().unwrap().as_bytes());
-    let oauth_client = build_google_oauth_client(&config)?;
+    let google_oauth_client = build_google_oauth_client(&config)?;
+    let github_oauth_client = build_github_oauth_client(&config)?;
     let oauth_openidconnect_client = build_google_oauth_openidconnect_client(&config).await?;
     let http_client = reqwest::ClientBuilder::new()
         .redirect(reqwest::redirect::Policy::none())
@@ -77,9 +81,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state = AppState {
         database,
         redis,
-        config,
+        config: config.clone(),
         key,
-        oauth_client,
+        google_oauth_client,
+        github_oauth_client,
         oauth_openidconnect_client,
         http_client,
         s3,
@@ -148,7 +153,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
     info!("Starting server on {:#?}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(config.server_addres)
+        .await
+        .unwrap();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

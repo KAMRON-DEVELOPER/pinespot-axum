@@ -1,11 +1,12 @@
 use crate::{
-    features::users::schemas::{AuthResponse, CompleteProfileSchema, Tokens},
-    services::google_oauth::GoogleOAuthClient,
+    features::users::{models::GithubOAuthUser, schemas::{AuthResponse, CompleteProfileSchema, Tokens}},
+    utilities::oauth_client_builder::{GithubOAuthClient, GoogleOAuthClient},
     utilities::{
-        config::Config, cookie::{GoogleOAuthUserSub,   OptionalGoogleOAuthUserSub}, errors::AppError, jwt::{Claims, TokenType, create_token, verify_token}
+        config::Config, cookie::{GithubOAuthUserId, GoogleOAuthUserSub, OptionalGithubOAuthUserId, OptionalGoogleOAuthUserSub}, errors::AppError, jwt::{Claims, TokenType, create_token, verify_token}
     },
 };
-use bcrypt::{DEFAULT_COST, hash}; 
+use bcrypt::{DEFAULT_COST, hash};
+use serde_json::Value; 
 use std::net::SocketAddr;
 
 use object_store::path::Path as ObjectStorePath;
@@ -44,20 +45,24 @@ use crate::{
     services::database::Database,
 };
 
+
+
+// -- =====================
+// -- GOOGLE OAUTH
+// -- =====================
 pub async fn google_oauth_handler(
     jar: PrivateCookieJar,
     State(config): State<Config>,
     OptionalGoogleOAuthUserSub(optional_google_user_sub): OptionalGoogleOAuthUserSub,
-    State(oauth_client): State<GoogleOAuthClient>,
+    State(google_oauth_client): State<GoogleOAuthClient>,
 ) -> Result<(PrivateCookieJar, Redirect), AppError> {
     if optional_google_user_sub.is_some() {
         return Ok((jar, Redirect::to("http://localhost:5173/complete-profile")));
     }
-
-    // No cookie, start OAuth flow
+ 
     let (pkce_code_challenge, pkce_code_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    let (auth_url, _csrf_token) = oauth_client
+    let (auth_url, _csrf_token) = google_oauth_client
         .authorize_url(CsrfToken::new_random)
         .add_scope(Scope::new("openid".to_string()))
         .add_scope(Scope::new("email".to_string()))
@@ -85,14 +90,14 @@ pub async fn google_oauth_callback_handler(
     State(database): State<Database>,
     State(config): State<Config>,
     Query(query): Query<OAuthCallback>,
-    State(oauth_client): State<GoogleOAuthClient>,
+    State(google_oauth_client): State<GoogleOAuthClient>,
 ) -> Result<(PrivateCookieJar, Redirect), AppError> {
     let pkce_verifier = jar
         .get("pkce_verifier")
         .map(|cookie| PkceCodeVerifier::new(cookie.value().to_string()))
         .ok_or(AppError::MissingPkceCodeVerifierError)?;
  
-    let token_response = oauth_client
+    let token_response = google_oauth_client
         .exchange_code(AuthorizationCode::new(query.code))
         .set_pkce_verifier(pkce_verifier)
         .request_async(&http_client)
@@ -158,7 +163,7 @@ pub async fn get_google_oauth_user_handler(
     GoogleOAuthUserSub(google_oauth_user_sub): GoogleOAuthUserSub,
     State(database): State<Database>,
 ) -> Result<impl IntoResponse, AppError> {
-    let oauth_user = sqlx::query_as!(
+    let google_oauth_user = sqlx::query_as!(
         GoogleOAuthUser,
         r#"
             SELECT * FROM google_oauth_users WHERE sub = $1
@@ -169,9 +174,129 @@ pub async fn get_google_oauth_user_handler(
     .await?
     .ok_or(AppError::GoogleOAuthUserNotFoundError)?;
 
-    Ok(Json(oauth_user))
+    Ok(Json(google_oauth_user))
 }
 
+// -- =====================
+// -- GITHUB OAUTH
+// -- =====================
+pub async fn github_oauth_handler(
+    jar: PrivateCookieJar,
+    State(config): State<Config>,
+   OptionalGithubOAuthUserId(optional_github_user_id):OptionalGithubOAuthUserId,
+    State(github_oauth_client): State<GithubOAuthClient>,
+) -> Result<(PrivateCookieJar, Redirect), AppError> {
+    if optional_github_user_id.is_some() {
+        return Ok((jar, Redirect::to("http://localhost:5173/complete-profile")));
+    }
+
+    let (pkce_code_challenge, pkce_code_verifier) = PkceCodeChallenge::new_random_sha256();
+
+    let (auth_url, _csrf_token) = github_oauth_client
+        .authorize_url(CsrfToken::new_random)
+        .add_scope(Scope::new("user:email".to_string()))
+        .set_pkce_challenge(pkce_code_challenge)
+        .url();
+
+    let pkce_verifier_cookie =
+        Cookie::build(("pkce_verifier", pkce_code_verifier.secret().to_string()))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::days(365))
+        .secure(config.cookie_secure.unwrap_or(true));
+    let jar = jar.add(pkce_verifier_cookie);
+
+    Ok((jar, Redirect::to(auth_url.as_ref())))
+}
+
+pub async fn github_oauth_callback_handler(
+    jar: PrivateCookieJar,
+    State(http_client): State<Client>,
+    State(database): State<Database>,
+    State(config): State<Config>,
+    Query(query): Query<OAuthCallback>,
+    State(github_oauth_client): State<GithubOAuthClient>,
+) -> Result<(PrivateCookieJar, Redirect), AppError> {
+    let pkce_verifier = jar
+        .get("pkce_verifier")
+        .map(|cookie| PkceCodeVerifier::new(cookie.value().to_string()))
+        .ok_or(AppError::MissingPkceCodeVerifierError)?;
+ 
+    let token_response = github_oauth_client
+        .exchange_code(AuthorizationCode::new(query.code))
+        .set_pkce_verifier(pkce_verifier)
+        .request_async(&http_client)
+        .await?;
+
+    let access_token = token_response.access_token().secret();
+ 
+    let get_github_oauth_user_response = http_client
+        .get("https://api.github.com/user")
+        .header("User-Agent", "PineSpotApp")
+        .bearer_auth(access_token.clone())
+        .send()
+        .await?;
+    debug!("get_github_oauth_user_response: {:#?}", get_github_oauth_user_response);
+
+    let github_oauth_user_text = get_github_oauth_user_response.text().await?;
+    debug!("github_oauth_user_text: {:#?}", github_oauth_user_text);
+    let github_oauth_user_json = serde_json::from_str::<Value>(&github_oauth_user_text)?;
+    debug!("github_oauth_user_json: {:#?}", github_oauth_user_json);
+ 
+    // let github_oauth_user = get_github_oauth_user_response.json::<GithubOAuthUser>().await?;
+    let github_oauth_user = serde_json::from_str::<GithubOAuthUser>(&github_oauth_user_text)?;
+    debug!("github_oauth_user: {:#?}", github_oauth_user);
+ 
+    let github_oauth_user_id = sqlx::query_scalar!(
+        r#"
+            INSERT INTO github_oauth_users (id, login, avatar_url, name, email, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+        "#,
+        github_oauth_user.id, 
+        github_oauth_user.login,
+        github_oauth_user.avatar_url,
+        github_oauth_user.name,
+        github_oauth_user.email,
+        github_oauth_user.created_at
+    )
+    .fetch_one(&database.pool)
+    .await?;
+  
+
+    let github_oauth_user_sub_cookie = Cookie::build(("github_oauth_user_id", github_oauth_user_id.to_string()))
+    .http_only(true)
+    .same_site(SameSite::Lax)
+    .max_age(CookieDuration::days(365))
+    .secure(config.cookie_secure.unwrap_or(true));
+    let jar = jar.add(github_oauth_user_sub_cookie);
+
+
+    Ok((jar, Redirect::to("http://localhost:5173/complete-profile")))
+
+}
+
+pub async fn get_github_oauth_user_handler(
+    GithubOAuthUserId(github_oauth_user_id): GithubOAuthUserId,
+    State(database): State<Database>,
+) -> Result<impl IntoResponse, AppError> {
+    let github_oauth_user = sqlx::query_as!(
+        GithubOAuthUser,
+        r#"
+            SELECT * FROM github_oauth_users WHERE id = $1
+        "#,
+        github_oauth_user_id
+    )
+    .fetch_optional(&database.pool)
+    .await?
+    .ok_or(AppError::GithubOAuthUserNotFoundError)?;
+
+    Ok(Json(github_oauth_user))
+}
+
+// -- =====================
+// -- PROFILE
+// -- ===================== 
 pub async fn complete_profile_handler(
     jar: PrivateCookieJar,
     GoogleOAuthUserSub(google_oauth_user_sub): GoogleOAuthUserSub,

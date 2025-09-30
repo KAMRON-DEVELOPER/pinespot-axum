@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::utilities::{config::Config, errors::AppError};
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct ZeptoResponseData {
     code: String,
     message: String,
@@ -12,6 +13,7 @@ struct ZeptoResponseData {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct ZeptoResponse {
     data: Vec<ZeptoResponseData>,
     message: String,
@@ -41,6 +43,12 @@ struct Payload {
 pub struct ZeptoMail {
     api_url: String,
     client: Client,
+}
+
+impl Default for ZeptoMail {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ZeptoMail {

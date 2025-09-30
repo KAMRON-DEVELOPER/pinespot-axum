@@ -2,7 +2,6 @@ use oauth2::{
     AuthUrl, ClientId, ClientSecret, RedirectUrl, RevocationUrl, TokenUrl, basic::BasicClient,
 };
 use serde::Deserialize;
-use tracing::debug;
 
 use crate::utilities::{config::Config, errors::AppError};
 

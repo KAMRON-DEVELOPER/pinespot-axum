@@ -13,6 +13,8 @@ pub enum AppError {
     DatabaseConnectionError,
     #[error("Sqlx error: {0}")]
     SqlxError(#[from] sqlx::Error),
+    #[error("Query error")]
+    QueryError(String),
     #[error("Redis url not set error")]
     RedisUrlNotSetError,
     #[error("Redis error: {0}")]
@@ -45,6 +47,12 @@ pub enum AppError {
     InvalidHeader { expected: String, found: String },
     #[error("Wrong credentials")]
     WrongCredentials,
+    #[error("Internal error, {0}")]
+    InternalError(String),
+    #[error("External service error, {0}")]
+    ExternalServiceError(String),
+    #[error("Missing email service api key error")]
+    MissingEmailServiceApiKeyError,
     #[error("Missing credentials")]
     MissingCredentials,
     #[error("Token creation error")]
@@ -55,6 +63,8 @@ pub enum AppError {
     MissingAuthorizationToken,
     #[error("{0} token required")]
     Unauthorized(String),
+    #[error("Missing oauth id error")]
+    MissingOAuthIdError,
     #[error("Missing google oauth sub error")]
     MissingGoogleOAuthSubError,
     #[error("Missing github oauth id error")]
@@ -71,10 +81,8 @@ pub enum AppError {
     SessionNotFoundError,
     #[error("Expired session token error")]
     ExpiredSessionTokenError,
-    #[error("Google oauth user not found error")]
-    GoogleOAuthUserNotFoundError,
-    #[error("Github oauth user not found error")]
-    GithubOAuthUserNotFoundError,
+    #[error("OAuth user not found error")]
+    OAuthUserNotFoundError,
     #[error("OAuth user id expired error")]
     OAuthUserIdExpiredError,
     #[error("Json validation error")]
@@ -182,6 +190,7 @@ impl IntoResponse for AppError {
                 "Database connection error".to_string(),
             ),
             Self::SqlxError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::QueryError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             Self::RedisUrlNotSetError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Redis url not set error".to_string(),
@@ -245,6 +254,12 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Missing credentials".to_string(),
             ),
+            AppError::InternalError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            AppError::ExternalServiceError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            AppError::MissingEmailServiceApiKeyError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing email service api key".to_string(),
+            ),
             AppError::TokenCreationError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Token creation error".to_string(),
@@ -258,6 +273,10 @@ impl IntoResponse for AppError {
                 "Missing authorization token".to_string(),
             ),
             Self::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e),
+            Self::MissingOAuthIdError => (
+                StatusCode::UNAUTHORIZED,
+                "Missing oauth id error".to_string(),
+            ),
             Self::MissingGoogleOAuthSubError => (
                 StatusCode::UNAUTHORIZED,
                 "Missing google oauth sub error".to_string(),
@@ -281,13 +300,9 @@ impl IntoResponse for AppError {
                 StatusCode::UNAUTHORIZED,
                 "Expired session token".to_string(),
             ),
-            Self::GoogleOAuthUserNotFoundError => (
+            Self::OAuthUserNotFoundError => (
                 StatusCode::UNAUTHORIZED,
-                "Google oauth user not found error".to_string(),
-            ),
-            Self::GithubOAuthUserNotFoundError => (
-                StatusCode::UNAUTHORIZED,
-                "Github oauth user not found error".to_string(),
+                "OAuth user not found error".to_string(),
             ),
             Self::OAuthUserIdExpiredError => (
                 StatusCode::UNAUTHORIZED,

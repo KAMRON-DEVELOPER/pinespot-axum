@@ -12,6 +12,7 @@ use tracing::{Level, warn};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub server_addres: String,
+    pub frontend_endpoint: String,
     pub base_dir: PathBuf,
     pub debug: bool,
     pub tracing_level: Level,
@@ -57,6 +58,7 @@ pub struct Config {
     pub secret_key: Option<String>,
     pub access_token_expire_in_minute: Option<i64>,
     pub refresh_token_expire_in_days: Option<i64>,
+    pub email_verification_token_expire_in_hours: Option<i64>,
     pub refresh_token_renewal_threshold_days: Option<i64>,
     pub cookie_secure: Option<bool>,
 
@@ -80,6 +82,15 @@ impl Config {
             Some("SERVER_ADDRES"),
             None,
             Some("0.0.0.0:8001".to_string()),
+        )
+        .await
+        .unwrap();
+
+        let frontend_endpoint = get_config_value(
+            "FRONTEND_ENDPOINT",
+            Some("FRONTEND_ENDPOINT"),
+            None,
+            Some("http://localhost:5173".to_string()),
         )
         .await
         .unwrap();
@@ -228,6 +239,13 @@ impl Config {
             Some(90),
         )
         .await;
+        let email_verification_token_expire_in_hours = get_config_value(
+            "EMAIL_VERIFICATION_TOKEN_EXPIRE_IN_HOURS",
+            Some("EMAIL_VERIFICATION_TOKEN_EXPIRE_IN_HOURS"),
+            None,
+            Some(24),
+        )
+        .await;
         let refresh_token_renewal_threshold_days = get_config_value(
             "REFRESH_TOKEN_RENEWAL_THRESHOLD_DAYS",
             Some("REFRESH_TOKEN_RENEWAL_THRESHOLD_DAYS"),
@@ -271,6 +289,7 @@ impl Config {
 
         Config {
             server_addres,
+            frontend_endpoint,
             debug,
             tracing_level,
             base_dir,
@@ -301,6 +320,7 @@ impl Config {
             secret_key,
             access_token_expire_in_minute,
             refresh_token_expire_in_days,
+            email_verification_token_expire_in_hours,
             refresh_token_renewal_threshold_days,
             cookie_secure,
             email_service_api_key,

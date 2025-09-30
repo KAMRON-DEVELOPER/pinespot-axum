@@ -20,6 +20,7 @@ use crate::utilities::config::Config;
 pub enum TokenType {
     Access,
     Refresh,
+    EmailVerification,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -30,22 +31,21 @@ pub struct Claims {
     pub iat: i64,
 }
 
-pub fn create_token(config: &Config, user_id: Uuid, for_refresh: bool) -> Result<String, AppError> {
+pub fn create_token(config: &Config, user_id: Uuid, typ: TokenType) -> Result<String, AppError> {
     let now = Utc::now();
-    let exp = if for_refresh {
-        now + Duration::days(config.refresh_token_expire_in_days.unwrap_or(30))
-    } else {
-        now + Duration::minutes(config.access_token_expire_in_minute.unwrap_or(5))
-    };
+
+    let exp = now
+        + match typ {
+            TokenType::Access => Duration::days(config.refresh_token_expire_in_days.unwrap()),
+            TokenType::Refresh => Duration::minutes(config.access_token_expire_in_minute.unwrap()),
+            TokenType::EmailVerification => {
+                Duration::hours(config.email_verification_token_expire_in_hours.unwrap())
+            }
+        };
 
     let claims = Claims {
         sub: user_id,
-        typ: if for_refresh {
-            TokenType::Refresh
-        } else {
-            TokenType::Access
-        },
-
+        typ,
         iat: now.timestamp(),
         exp: exp.timestamp(),
     };

@@ -14,20 +14,19 @@ use crate::{
         schemas::Pagination,
     },
     services::database::Database,
-    utilities::{cookie::OptionalGoogleOAuthUserSub, errors::AppError, jwt::Claims},
+    utilities::{config::Config, cookie::OptionalOAuthUserIdCookie, errors::AppError, jwt::Claims},
 };
 
 pub async fn get_many_listings_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,
+    State(config): State<Config>,
     Query(pagination): Query<Pagination>,
-    OptionalGoogleOAuthUserSub(optional_google_user_sub): OptionalGoogleOAuthUserSub,
+    OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
 ) -> Result<impl IntoResponse, AppError> {
-    if optional_google_user_sub.is_some() {
-        return Ok(Either::E1((
-            jar,
-            Redirect::to("http://localhost:5173/complete-profile"),
-        )));
+    if optional_oauth_user_id_cookie.is_some() {
+        let uri = format!("{}/complete-profile", config.frontend_endpoint);
+        return Ok(Either::E1((jar, Redirect::to(&uri))));
     }
 
     pagination.validate()?;

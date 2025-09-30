@@ -26,41 +26,34 @@ pub struct User {
     pub first_name: String,
     pub last_name: String,
     pub email: String,
-    pub phone_number: Option<String>,
-    #[sqlx(default)]
-    pub password: Option<String>,
+    pub phone_number: String,
+    pub password: String,
     pub picture: Option<String>,
-    #[sqlx(default)]
     pub role: UserRole,
-    #[sqlx(default)]
     pub status: UserStatus,
+    pub email_verified: bool,
+    pub oauth_user_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
-#[sqlx(default)]
-#[serde(default)]
-pub struct GoogleOAuthUser {
-    pub sub: String,
-    pub email: Option<String>,
-    pub email_verified: bool,
-    pub family_name: Option<String>,
-    pub given_name: Option<String>,
-    pub name: Option<String>,
-    pub picture: Option<String>,
-    pub phone_number: Option<String>,
-    pub created_at: DateTime<Utc>,
+#[derive(Type, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[sqlx(type_name = "provider", rename_all = "lowercase")]
+pub enum Provider {
+    Google,
+    Github,
+    Email,
 }
 
-#[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
-#[sqlx(default)]
-#[serde(default)]
-pub struct GithubOAuthUser {
-    pub id: i64,
-    pub login: String,
-    pub avatar_url: String,
-    pub name: Option<String>,
+#[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Debug)]
+pub struct OAuthUser {
+    pub id: String,
+    pub provider: Provider,
+    pub username: Option<String>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
     pub email: Option<String>,
-    pub created_at: DateTime<Utc>,
+    pub password: Option<String>,
+    pub picture: Option<String>,
+    pub phone_number: Option<String>,
 }

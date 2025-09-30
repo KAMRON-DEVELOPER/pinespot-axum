@@ -7,6 +7,22 @@ CREATE TYPE user_role AS ENUM ('admin', 'regular');
 CREATE TYPE user_status AS ENUM ('active', 'disactive');
 CREATE TYPE apartment_condition AS ENUM ('new', 'repaired', 'old');
 CREATE TYPE sale_type AS ENUM ('buy', 'rent');
+CREATE TYPE provider AS ENUM ('google', 'github', 'email');
+-- =====================
+-- OAUTH USERS
+-- =====================
+CREATE TABLE oauth_users (
+    id VARCHAR(255) PRIMARY KEY,
+    provider provider NOT NULL,
+    username VARCHAR(50),
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(100),
+    password TEXT,
+    picture TEXT,
+    phone_number VARCHAR(50),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 -- =====================
 -- USERS
 -- =====================
@@ -20,6 +36,8 @@ CREATE TABLE users (
     picture TEXT,
     role user_role NOT NULL DEFAULT 'regular',
     status user_status NOT NULL DEFAULT 'active',
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    oauth_user_id VARCHAR(255) REFERENCES oauth_users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -98,25 +116,25 @@ CREATE TABLE favorites (
 -- =====================
 -- GOOGLE OAUTH USERS
 -- =====================
-CREATE TABLE google_oauth_users (
-    sub TEXT PRIMARY KEY,
-    email VARCHAR(100),
-    email_verified BOOLEAN NOT NULL DEFAULT false,
-    family_name VARCHAR(100),
-    given_name VARCHAR(100),
-    phone_number VARCHAR(50),
-    name VARCHAR(100),
-    picture TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- CREATE TABLE google_oauth_users (
+--     sub TEXT PRIMARY KEY,
+--     email VARCHAR(100),
+--     email_verified BOOLEAN NOT NULL DEFAULT false,
+--     family_name VARCHAR(100),
+--     given_name VARCHAR(100),
+--     phone_number VARCHAR(50),
+--     name VARCHAR(100),
+--     picture TEXT,
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );
 -- =====================
 -- GITHUB OAUTH USERS
 -- =====================
-CREATE TABLE github_oauth_users (
-    id BIGINT PRIMARY KEY,
-    login VARCHAR(100) NOT NULL,
-    avatar_url TEXT NOT NULL,
-    name VARCHAR(100),
-    email VARCHAR(100),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- CREATE TABLE github_oauth_users (
+--     id BIGINT PRIMARY KEY,
+--     login VARCHAR(100) NOT NULL,
+--     avatar_url TEXT NOT NULL,
+--     name VARCHAR(100),
+--     email VARCHAR(100),
+--     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- );

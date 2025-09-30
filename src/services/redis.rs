@@ -58,8 +58,8 @@ impl Redis {
         }
         let client = Client::open(redis_url)?;
 
-        let connection_info = client.get_connection_info();
-        debug!(">>> connection info: {connection_info:#?}");
+        // let connection_info = client.get_connection_info();
+        // debug!(">>> connection info: {connection_info:#?}");
 
         let connection = client.get_multiplexed_tokio_connection().await?;
 

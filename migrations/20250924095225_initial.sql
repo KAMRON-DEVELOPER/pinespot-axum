@@ -96,17 +96,27 @@ CREATE TABLE favorites (
     UNIQUE (user_id, listing_id)
 );
 -- =====================
--- OAUTH USERS
+-- GOOGLE OAUTH USERS
 -- =====================
-CREATE TABLE oauth_users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    exp TIMESTAMPTZ NOT NULL,
-    sub VARCHAR(255) NOT NULL,
+CREATE TABLE google_oauth_users (
+    sub TEXT PRIMARY KEY,
     email VARCHAR(100),
+    email_verified BOOLEAN NOT NULL DEFAULT false,
     family_name VARCHAR(100),
     given_name VARCHAR(100),
     phone_number VARCHAR(50),
     name VARCHAR(100),
     picture TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- =====================
+-- GITHUB OAUTH USERS
+-- =====================
+CREATE TABLE github_oauth_users (
+    id BIGINT PRIMARY KEY,
+    login VARCHAR(100) NOT NULL,
+    avatar_url TEXT NOT NULL,
+    name VARCHAR(100),
+    email VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

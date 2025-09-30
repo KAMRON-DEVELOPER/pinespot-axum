@@ -55,8 +55,10 @@ pub enum AppError {
     MissingAuthorizationToken,
     #[error("{0} token required")]
     Unauthorized(String),
-    #[error("Missing authorization token error")]
-    MissingOAuthUserIdError,
+    #[error("Missing google oauth sub error")]
+    MissingGoogleOAuthSubError,
+    #[error("Missing github oauth id error")]
+    MissingGithubOAuthIdError,
     #[error("Invalid authorization token error")]
     InvalidAuthorizationTokenError,
     #[error("jsonwebtoken error")]
@@ -69,14 +71,16 @@ pub enum AppError {
     SessionNotFoundError,
     #[error("Expired session token error")]
     ExpiredSessionTokenError,
-    #[error("OAuth user not found error")]
-    OAuthUserNotFoundError,
+    #[error("Google oauth user not found error")]
+    GoogleOAuthUserNotFoundError,
+    #[error("Github oauth user not found error")]
+    GithubOAuthUserNotFoundError,
     #[error("OAuth user id expired error")]
     OAuthUserIdExpiredError,
     #[error("Json validation error")]
     JsonValidationError,
-    #[error("Pkce code verifier not found error")]
-    PkceCodeVerifierNotFoundError,
+    #[error("Missing pkce code verifier error")]
+    MissingPkceCodeVerifierError,
     #[error("Nonce not found error")]
     NonceNotFoundError,
     #[error("Id token not found error")]
@@ -254,9 +258,13 @@ impl IntoResponse for AppError {
                 "Missing authorization token".to_string(),
             ),
             Self::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e),
-            Self::MissingOAuthUserIdError => (
+            Self::MissingGoogleOAuthSubError => (
                 StatusCode::UNAUTHORIZED,
-                "Missing oauth user id error".to_string(),
+                "Missing google oauth sub error".to_string(),
+            ),
+            Self::MissingGithubOAuthIdError => (
+                StatusCode::UNAUTHORIZED,
+                "Missing github oauth id error".to_string(),
             ),
             Self::MissingSessionTokenError => (
                 StatusCode::UNAUTHORIZED,
@@ -273,9 +281,13 @@ impl IntoResponse for AppError {
                 StatusCode::UNAUTHORIZED,
                 "Expired session token".to_string(),
             ),
-            Self::OAuthUserNotFoundError => (
+            Self::GoogleOAuthUserNotFoundError => (
                 StatusCode::UNAUTHORIZED,
-                "OAuth user not found error".to_string(),
+                "Google oauth user not found error".to_string(),
+            ),
+            Self::GithubOAuthUserNotFoundError => (
+                StatusCode::UNAUTHORIZED,
+                "Github oauth user not found error".to_string(),
             ),
             Self::OAuthUserIdExpiredError => (
                 StatusCode::UNAUTHORIZED,
@@ -290,9 +302,9 @@ impl IntoResponse for AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "Json validation error".to_string(),
             ),
-            Self::PkceCodeVerifierNotFoundError => (
+            Self::MissingPkceCodeVerifierError => (
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "Pkce code verifier not found error".to_string(),
+                "Missing pkce code verifier error".to_string(),
             ),
             Self::NonceNotFoundError => (
                 StatusCode::UNPROCESSABLE_ENTITY,

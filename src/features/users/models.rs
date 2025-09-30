@@ -40,15 +40,27 @@ pub struct User {
 
 #[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
 #[sqlx(default)]
-pub struct OAuthUser {
-    pub id: Option<Uuid>,
-    pub exp: Option<DateTime<Utc>>,
+#[serde(default)]
+pub struct GoogleOAuthUser {
     pub sub: String,
     pub email: Option<String>,
+    pub email_verified: bool,
     pub family_name: Option<String>,
     pub given_name: Option<String>,
     pub name: Option<String>,
     pub picture: Option<String>,
     pub phone_number: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
+#[sqlx(default)]
+#[serde(default)]
+pub struct GithubOAuthUser {
+    pub id: i64,
+    pub login: String,
+    pub avatar_url: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
     pub created_at: DateTime<Utc>,
 }

@@ -2586,6 +2586,7 @@ dependencies = [
  "chrono",
  "cookie",
  "dotenvy",
+ "either",
  "infer",
  "jsonwebtoken",
  "lapin",

@@ -2,9 +2,10 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Redirect},
 };
 
+use axum_extra::{either::Either, extract::PrivateCookieJar};
 use uuid::Uuid;
 
 use crate::{
@@ -13,14 +14,22 @@ use crate::{
         schemas::Pagination,
     },
     services::database::Database,
-    utilities::{errors::AppError, jwt::Claims},
+    utilities::{cookie::OptionalGoogleOAuthUserSub, errors::AppError, jwt::Claims},
 };
 
-#[axum::debug_handler]
 pub async fn get_many_listings_handler(
+    jar: PrivateCookieJar,
     State(database): State<Database>,
     Query(pagination): Query<Pagination>,
+    OptionalGoogleOAuthUserSub(optional_google_user_sub): OptionalGoogleOAuthUserSub,
 ) -> Result<impl IntoResponse, AppError> {
+    if optional_google_user_sub.is_some() {
+        return Ok(Either::E1((
+            jar,
+            Redirect::to("http://localhost:5173/complete-profile"),
+        )));
+    }
+
     pagination.validate()?;
 
     let listings = sqlx::query_as!(
@@ -36,13 +45,19 @@ pub async fn get_many_listings_handler(
     .fetch_all(&database.pool)
     .await?;
 
-    Ok(Json(ListingResponse {
-        listings,
-        total: 1000,
-    }))
+    let total = sqlx::query_scalar!(
+        r#"
+            SELECT COUNT(*) from listings
+        "#
+    )
+    .fetch_one(&database.pool)
+    .await?;
+
+    let total = total.unwrap_or(0);
+
+    Ok(Either::E2(Json(ListingResponse { listings, total })))
 }
 
-#[axum::debug_handler]
 pub async fn get_one_listing_handler(
     State(database): State<Database>,
     Path(listing_id): Path<Uuid>,

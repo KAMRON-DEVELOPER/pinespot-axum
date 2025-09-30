@@ -2,21 +2,17 @@ use crate::{
     features::users::schemas::{AuthResponse, CompleteProfileSchema, Tokens},
     services::google_oauth::GoogleOAuthClient,
     utilities::{
-        config::Config,
-        errors::AppError,
-        jwt::{Claims, TokenType, create_token, verify_token},
-        session::{OauthUserId, OptionalOauthUserId},
+        config::Config, cookie::{GoogleOAuthUserSub,   OptionalGoogleOAuthUserSub}, errors::AppError, jwt::{Claims, TokenType, create_token, verify_token}
     },
 };
-use bcrypt::{DEFAULT_COST, hash};
-use serde_json::Value;
+use bcrypt::{DEFAULT_COST, hash}; 
 use std::net::SocketAddr;
 
 use object_store::path::Path as ObjectStorePath;
 
 use cookie::{
     SameSite,
-    time::{Duration as CookieDuration, OffsetDateTime},
+    time::{Duration as CookieDuration },
 };
 
 use axum::{
@@ -30,7 +26,7 @@ use axum_extra::{
     extract::{PrivateCookieJar, cookie::Cookie},
     headers::{Authorization, UserAgent, authorization::Bearer},
 };
-use chrono::{Duration, Utc};
+use chrono::{ Utc};
 use oauth2::{
     AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, Scope, TokenResponse,
 };
@@ -42,7 +38,7 @@ use uuid::Uuid;
 
 use crate::{
     features::users::{
-        models::{OAuthUser, User, UserRole, UserStatus},
+        models::{GoogleOAuthUser, User, UserRole, UserStatus},
         schemas::{LoginSchema, OAuthCallback, PhoneResponse},
     },
     services::database::Database,
@@ -50,25 +46,12 @@ use crate::{
 
 pub async fn google_oauth_handler(
     jar: PrivateCookieJar,
-    OptionalOauthUserId(optional_oauth_user_id): OptionalOauthUserId,
-    State(database): State<Database>,
+    State(config): State<Config>,
+    OptionalGoogleOAuthUserSub(optional_google_user_sub): OptionalGoogleOAuthUserSub,
     State(oauth_client): State<GoogleOAuthClient>,
 ) -> Result<(PrivateCookieJar, Redirect), AppError> {
-    if let Some(oauth_user_id) = optional_oauth_user_id {
-        if let Some(exp) = sqlx::query_scalar!(
-            r#"SELECT exp FROM oauth_users WHERE id = $1"#,
-            oauth_user_id
-        )
-        .fetch_optional(&database.pool)
-        .await?
-            && exp <= Utc::now()
-        {
-            sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
-                .execute(&database.pool)
-                .await?;
-        }
-
-        return Ok((jar, Redirect::to("/complete-profile")));
+    if optional_google_user_sub.is_some() {
+        return Ok((jar, Redirect::to("http://localhost:5173/complete-profile")));
     }
 
     // No cookie, start OAuth flow
@@ -85,11 +68,12 @@ pub async fn google_oauth_handler(
         .set_pkce_challenge(pkce_code_challenge)
         .url();
 
-    let mut pkce_verifier_cookie =
-        Cookie::new("pkce_verifier", pkce_code_verifier.secret().to_string());
-    pkce_verifier_cookie.set_http_only(true);
-    pkce_verifier_cookie.set_same_site(SameSite::Lax);
-    pkce_verifier_cookie.set_secure(false);
+    let pkce_verifier_cookie =
+        Cookie::build(("pkce_verifier", pkce_code_verifier.secret().to_string()))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::days(365))
+        .secure(config.cookie_secure.unwrap_or(true));
     let jar = jar.add(pkce_verifier_cookie);
 
     Ok((jar, Redirect::to(auth_url.as_ref())))
@@ -99,46 +83,39 @@ pub async fn google_oauth_callback_handler(
     jar: PrivateCookieJar,
     State(http_client): State<Client>,
     State(database): State<Database>,
+    State(config): State<Config>,
     Query(query): Query<OAuthCallback>,
     State(oauth_client): State<GoogleOAuthClient>,
 ) -> Result<(PrivateCookieJar, Redirect), AppError> {
     let pkce_verifier = jar
         .get("pkce_verifier")
         .map(|cookie| PkceCodeVerifier::new(cookie.value().to_string()))
-        .ok_or(AppError::PkceCodeVerifierNotFoundError)?;
+        .ok_or(AppError::MissingPkceCodeVerifierError)?;
  
     let token_response = oauth_client
         .exchange_code(AuthorizationCode::new(query.code))
         .set_pkce_verifier(pkce_verifier)
-        .add_extra_param("name", "value")
         .request_async(&http_client)
         .await?;
 
     let access_token = token_response.access_token().secret();
 
-    let user_info_response = http_client
+    let get_google_oauth_user_response = http_client
         .get("https://openidconnect.googleapis.com/v1/userinfo")
         .bearer_auth(access_token.clone())
         .send()
         .await?;
-    debug!("user_info_response: {:#?}", user_info_response);
+    debug!("get_google_oauth_user_response: {:#?}", get_google_oauth_user_response);
+ 
+    let google_oauth_user = get_google_oauth_user_response.json::<GoogleOAuthUser>().await?;
+    debug!("google_oauth_user: {:#?}", google_oauth_user);
 
-    // let oauth_user_json = user_info_response.json::<Value>().await?;
-    let oauth_user_text = user_info_response.text().await?;
-    let oauth_user_json: Value = serde_json::from_str(&oauth_user_text)?;
-    debug!("oauth_user_text: {:#?}", oauth_user_text);
-    debug!("oauth_user_json: {:#?}", oauth_user_json);
-
-    // let oauth_user = user_info_response.json::<OAuthUser>().await?;
-    let oauth_user: OAuthUser = serde_json::from_str(&oauth_user_text)?;
-    debug!("oauth_user: {:#?}", oauth_user);
-
-    let phone_number_response = http_client
+    let get_phone_number_response = http_client
         .get("https://people.googleapis.com/v1/people/me?personFields=phoneNumbers")
         .bearer_auth(access_token.clone())
         .send()
         .await?;
-    let phone_number = phone_number_response.json::<PhoneResponse>().await?;
+    let phone_number = get_phone_number_response.json::<PhoneResponse>().await?;
     debug!("phone number: {:?}", phone_number);
 
     let phone_number = phone_number
@@ -146,96 +123,79 @@ pub async fn google_oauth_callback_handler(
         .as_ref()
         .and_then(|v| v.first())
         .map(|p| &p.value);
-
-    let  exp = Utc::now() + Duration::minutes(10);
   
-    let oauth_user_id = sqlx::query_scalar!(
+    let google_oauth_user_sub = sqlx::query_scalar!(
         r#"
-            INSERT INTO oauth_users (exp, sub , email, family_name, given_name, name, picture, phone_number)
+            INSERT INTO google_oauth_users (sub , email,email_verified, family_name, given_name, name, picture, phone_number)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id
+            RETURNING sub
         "#,
-        exp,
-        oauth_user.sub, 
-        oauth_user.email,
-        oauth_user.family_name,
-        oauth_user.given_name,
-        oauth_user.name,
-        oauth_user.picture,
+        google_oauth_user.sub, 
+        google_oauth_user.email,
+        google_oauth_user.email_verified,
+        google_oauth_user.family_name,
+        google_oauth_user.given_name,
+        google_oauth_user.name,
+        google_oauth_user.picture,
         phone_number
     )
     .fetch_one(&database.pool)
     .await?;
- 
-    let expire = OffsetDateTime::from_unix_timestamp(exp.timestamp()).unwrap();
+  
 
-    let mut oauth_user_id_cookie = Cookie::new("oauth_user_id", oauth_user_id.to_string());
-    oauth_user_id_cookie.set_http_only(true);
-    oauth_user_id_cookie.set_same_site(SameSite::None);
-    oauth_user_id_cookie.set_secure(false);
-    oauth_user_id_cookie.set_expires(expire);
-    let jar = jar.add(oauth_user_id_cookie);
+    let google_oauth_user_sub_cookie = Cookie::build(("google_oauth_user_sub", google_oauth_user_sub))
+    .http_only(true)
+    .same_site(SameSite::Lax)
+    .max_age(CookieDuration::days(365))
+    .secure(config.cookie_secure.unwrap_or(true));
+    let jar = jar.add(google_oauth_user_sub_cookie);
 
 
-    Ok((jar, Redirect::to("/complete-profile")))
+    Ok((jar, Redirect::to("http://localhost:5173/complete-profile")))
 }
 
-pub async fn get_oauth_user(
-    OauthUserId(oauth_user_id): OauthUserId,
+pub async fn get_google_oauth_user_handler(
+    GoogleOAuthUserSub(google_oauth_user_sub): GoogleOAuthUserSub,
     State(database): State<Database>,
 ) -> Result<impl IntoResponse, AppError> {
     let oauth_user = sqlx::query_as!(
-        OAuthUser,
+        GoogleOAuthUser,
         r#"
-            SELECT * FROM oauth_users WHERE id = $1 AND exp > NOW()
+            SELECT * FROM google_oauth_users WHERE sub = $1
         "#,
-        oauth_user_id
+        google_oauth_user_sub
     )
     .fetch_optional(&database.pool)
     .await?
-    .ok_or(AppError::OAuthUserNotFoundError)?;
-
-    if oauth_user.exp.unwrap() <= Utc::now() {
-        sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
-            .execute(&database.pool)
-            .await?;
-        return Err(AppError::OAuthUserIdExpiredError);
-    }
+    .ok_or(AppError::GoogleOAuthUserNotFoundError)?;
 
     Ok(Json(oauth_user))
 }
 
 pub async fn complete_profile_handler(
     jar: PrivateCookieJar,
-    OauthUserId(oauth_user_id): OauthUserId,
+    GoogleOAuthUserSub(google_oauth_user_sub): GoogleOAuthUserSub,
     State(gcs): State<GoogleCloudStorage>,
-    // State(s3): State<AmazonS3>,
     State(database): State<Database>,
     State(config): State<Config>,
+    mut multipart: Multipart,
+    // State(s3): State<AmazonS3>,
     // TypedHeader(_user_agent): TypedHeader<UserAgent>,
     // ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    mut multipart: Multipart,
-) -> Result<(PrivateCookieJar, impl IntoResponse), AppError> {
-    // let pending_cookie = jar.get("pending_id").ok_or(AppError::UnauthorizedError)?;
-    // let pending_id = Uuid::parse_str(pending_cookie.value())?;
+) -> Result<(PrivateCookieJar, impl IntoResponse), AppError> { 
 
-    let oauth_user = sqlx::query_as!(
-        OAuthUser,
+    let _google_oauth_user = sqlx::query_as!(
+        GoogleOAuthUser,
         r#"
-            SELECT * FROM oauth_users WHERE id = $1 AND exp > NOW()
+            SELECT * FROM google_oauth_users WHERE sub = $1
         "#,
-        oauth_user_id
+        google_oauth_user_sub
     )
     .fetch_optional(&database.pool)
     .await?
-    .ok_or(AppError::OAuthUserNotFoundError)?;
+    .ok_or(AppError::GoogleOAuthUserNotFoundError)?;
 
-    if oauth_user.exp.unwrap() <= Utc::now() {
-        sqlx::query_scalar!(r#"DELETE FROM oauth_users WHERE id = $1"#, oauth_user_id)
-            .execute(&database.pool)
-            .await?;
-        return Err(AppError::OAuthUserIdExpiredError);
-    }
+   
 
     let mut complete_profile_schema = CompleteProfileSchema {
         given_name: None,
@@ -274,7 +234,7 @@ pub async fn complete_profile_handler(
                     })?
                     .extension();
                 let location =
-                    ObjectStorePath::from(format!("{}/{}.{}", oauth_user_id, pic_id, ext));
+                    ObjectStorePath::from(format!("{}/{}.{}", google_oauth_user_sub, pic_id, ext));
                 gcs.put(&location, data.into()).await?;
                 complete_profile_schema.picture = Some(location);
             }
@@ -321,10 +281,9 @@ pub async fn complete_profile_handler(
     let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
     let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
         .http_only(true)
-        .secure(config.cookie_secure.unwrap_or(true))
         .same_site(SameSite::Lax)
         .max_age(CookieDuration::days(max_age_days))
-        .path("/");
+        .secure(config.cookie_secure.unwrap_or(true));
 
     let jar = jar.add(refresh_cookie);
 
@@ -355,11 +314,10 @@ pub async fn signup_handler(
 
     let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
     let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
-        .http_only(true)
-        .secure(config.cookie_secure.unwrap_or(true))
-        .same_site(SameSite::Lax)
-        .max_age(CookieDuration::days(max_age_days))
-        .path("/");
+    .http_only(true)
+    .same_site(SameSite::Lax)
+    .max_age(CookieDuration::days(max_age_days))
+    .secure(config.cookie_secure.unwrap_or(true));
 
     let jar = jar.add(refresh_cookie);
 
@@ -391,10 +349,9 @@ pub async fn verification_handler(
     let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
     let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
         .http_only(true)
-        .secure(config.cookie_secure.unwrap_or(true))
         .same_site(SameSite::Lax)
         .max_age(CookieDuration::days(max_age_days))
-        .path("/");
+        .secure(config.cookie_secure.unwrap_or(true));
 
     let jar = jar.add(refresh_cookie);
 
@@ -426,10 +383,9 @@ pub async fn signin_handler(
     let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
     let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
         .http_only(true)
-        .secure(config.cookie_secure.unwrap_or(true))
         .same_site(SameSite::Lax)
         .max_age(CookieDuration::days(max_age_days))
-        .path("/");
+        .secure(config.cookie_secure.unwrap_or(true));
 
     let jar = jar.add(refresh_cookie);
 
@@ -522,10 +478,9 @@ pub async fn refresh_handler(
             let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
             let cookie = Cookie::build(("refresh_token", refresh.clone()))
                 .http_only(true)
-                .secure(config.cookie_secure.unwrap_or(true))
                 .same_site(SameSite::Lax)
                 .max_age(CookieDuration::days(max_age_days))
-                .path("/");
+                .secure(config.cookie_secure.unwrap_or(true));
             jar.add(cookie)
         } else {
             jar

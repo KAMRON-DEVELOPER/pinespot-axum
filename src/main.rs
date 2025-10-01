@@ -110,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_headers([
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
+            header::ACCEPT,
             HeaderName::from_static("x-requested-with"),
         ]);
 
@@ -118,6 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(listings::routes())
         .merge(users::routes())
         .fallback(not_found_handler)
+        .layer(cors)
         .layer(
             TraceLayer::new_for_http()
                 .on_request(|request: &http::Request<_>, _span: &tracing::Span| {
@@ -151,8 +153,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         //         // logging of errors so disable that
         //         .on_failure(()),
         // )
-        .with_state(app_state)
-        .layer(cors);
+        .with_state(app_state);
 
     // Run Axum server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));

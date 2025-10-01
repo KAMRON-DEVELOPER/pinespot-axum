@@ -17,7 +17,7 @@ use crate::{
     },
 };
 use bcrypt::{DEFAULT_COST, hash};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::net::SocketAddr;
 
 use axum::{
@@ -49,6 +49,8 @@ pub async fn get_oauth_user_handler(
     oauth_user_id_cookie: OAuthUserIdCookie,
 ) -> Result<impl IntoResponse, AppError> {
     let oauth_user_id = oauth_user_id_cookie.id;
+    debug!("oauth_user_id is {:#?}", oauth_user_id);
+    debug!("provider is {:#?}", oauth_user_id_cookie.provider);
 
     let oauth_user = sqlx::query_as!(
         OAuthUser,
@@ -70,6 +72,8 @@ pub async fn get_oauth_user_handler(
     .fetch_optional(&database.pool)
     .await?
     .ok_or(AppError::OAuthUserNotFoundError)?;
+
+    debug!("oauth_user is {:#?}", oauth_user);
 
     Ok(Json(oauth_user))
 }
@@ -323,6 +327,8 @@ pub async fn continue_with_email_handler(
 
     let maybe_user = continue_with_email_schema.verify(&database).await?;
 
+    debug!("maybe_user is {:#?}", maybe_user);
+
     if let Some(user) = maybe_user {
         let new_access = create_token(&config, user.id, TokenType::Access)?;
         let new_refresh = create_token(&config, user.id, TokenType::Refresh)?;
@@ -343,14 +349,14 @@ pub async fn continue_with_email_handler(
         return Ok((jar, response).into_response());
     }
 
-    let email_oauth_user_id = Uuid::new_v4().to_string();
+    let email_oauth_user_id_str = Uuid::new_v4().to_string();
     let email_oauth_user_id = sqlx::query_scalar!(
         r#"
             INSERT INTO oauth_users (id, provider, email, password)
             VALUES ($1, $2, $3, $4)
             RETURNING id
         "#,
-        email_oauth_user_id,
+        email_oauth_user_id_str,
         Provider::Email as Provider,
         continue_with_email_schema.email,
         continue_with_email_schema.password,
@@ -358,6 +364,8 @@ pub async fn continue_with_email_handler(
     .fetch_one(&database.pool)
     .await?;
 
+    debug!("email_oauth_user_id is {:#?}", email_oauth_user_id);
+    debug!("email_oauth_user_id_str is {:#?}", email_oauth_user_id_str);
     let email_oauth_user_sub_cookie = Cookie::build(("email_oauth_user_id", email_oauth_user_id))
         .http_only(true)
         .same_site(SameSite::Lax)
@@ -653,4 +661,35 @@ pub async fn refresh_handler(
     });
 
     Ok((jar, response))
+}
+
+pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
+    let email_oauth_user_id = Cookie::build(("email_oauth_user_id", ""))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(true)
+        .max_age(CookieDuration::seconds(0));
+    let github_oauth_user_id = Cookie::build(("github_oauth_user_id", ""))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(true)
+        .max_age(CookieDuration::seconds(0));
+    let google_oauth_user_sub = Cookie::build(("google_oauth_user_sub", ""))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(true)
+        .max_age(CookieDuration::seconds(0));
+
+    let jar = jar
+        .remove(email_oauth_user_id)
+        .remove(github_oauth_user_id)
+        .remove(google_oauth_user_sub);
+
+    (
+        jar,
+        Json(json!({
+            "message": "all cookies cleared"
+        })),
+    )
+        .into_response()
 }

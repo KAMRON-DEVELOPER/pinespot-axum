@@ -48,6 +48,26 @@ impl ContinueWithEmailSchema {
     pub async fn verify(&self, database: &Database) -> Result<Option<User>, AppError> {
         self.validate()?;
 
+        // let maybe_oauth_user = sqlx::query_as!(
+        //     OAuthUser,
+        //     r#"
+        //         SELECT
+        //             id,
+        //             provider AS "provider: Provider",
+        //             username,
+        //             full_name,
+        //             email,
+        //             phone_number,
+        //             password,
+        //             picture,
+        //             created_at
+        //         FROM oauth_users WHERE id = $1
+        //     "#,
+        //     self.email
+        // )
+        // .fetch_optional(&database.pool)
+        // .await?;
+
         let maybe_user = sqlx::query_as!(
             User,
             r#"
@@ -74,9 +94,12 @@ impl ContinueWithEmailSchema {
         if let Some(user) = maybe_user {
             let verified = verify(&self.password, &user.password)?;
 
-            if verified {
-                return Ok(Some(user));
+            if !verified {
+                return Err(AppError::ValidationError(
+                    "Password is incorrect".to_string(),
+                ));
             }
+            return Ok(Some(user));
         }
 
         Ok(None)

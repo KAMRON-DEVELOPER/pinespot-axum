@@ -9,13 +9,13 @@ use std::result::Result::Ok;
 
 use axum::{
     extract::ConnectInfo,
-    http::{self, HeaderValue, Method, StatusCode},
+    http::{self, HeaderName, HeaderValue, Method, StatusCode, header},
     response::IntoResponse,
 };
 use axum_extra::extract::cookie::Key;
 use tokio::signal;
 use tower_http::{
-    cors::{Any, CorsLayer},
+    cors::CorsLayer,
     trace::{DefaultOnResponse, TraceLayer},
 };
 use tracing::info;
@@ -106,7 +106,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Method::DELETE,
             Method::OPTIONS,
         ])
-        .allow_headers(Any);
+        .allow_credentials(true)
+        .allow_headers([
+            header::AUTHORIZATION,
+            header::CONTENT_TYPE,
+            HeaderName::from_static("x-requested-with"),
+        ]);
 
     // Build router
     let app = axum::Router::new()

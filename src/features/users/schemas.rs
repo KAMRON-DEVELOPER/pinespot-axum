@@ -72,10 +72,9 @@ pub struct GithubOAuthUser {
 #[serde(default)]
 pub struct OAuthUserSchema {
     pub username: Option<String>,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
+    pub full_name: Option<String>,
     pub email: Option<String>,
+    pub phone_number: Option<String>,
     pub password: Option<String>,
     pub picture: Option<String>,
-    pub phone_number: Option<String>,
 }

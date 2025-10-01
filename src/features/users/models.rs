@@ -23,8 +23,7 @@ pub enum UserStatus {
 #[sqlx(default)]
 pub struct User {
     pub id: Uuid,
-    pub first_name: String,
-    pub last_name: String,
+    pub full_name: String,
     pub email: String,
     pub phone_number: String,
     pub password: String,
@@ -50,10 +49,9 @@ pub struct OAuthUser {
     pub id: String,
     pub provider: Provider,
     pub username: Option<String>,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
+    pub full_name: Option<String>,
     pub email: Option<String>,
+    pub phone_number: Option<String>,
     pub password: Option<String>,
     pub picture: Option<String>,
-    pub phone_number: Option<String>,
 }

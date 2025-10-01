@@ -58,12 +58,11 @@ pub async fn get_oauth_user_handler(
                 id,
                 provider AS "provider: Provider",
                 username,
-                first_name,
-                last_name,
+                full_name,
                 email,
+                phone_number,
                 password,
-                picture,
-                phone_number
+                picture
             FROM oauth_users WHERE id = $1
         "#,
         oauth_user_id
@@ -167,15 +166,14 @@ pub async fn google_oauth_callback_handler(
 
     let google_oauth_user_sub = sqlx::query_scalar!(
         r#"
-            INSERT INTO oauth_users (id, provider, username, first_name, last_name, email, picture, phone_number)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO oauth_users (id, provider, username, full_name, email, picture, phone_number)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
         "#,
         oauth_user.id,
         oauth_user.provider as Provider,
         oauth_user.username,
-        oauth_user.first_name,
-        oauth_user.last_name,
+        oauth_user.full_name,
         oauth_user.email,
         oauth_user.picture,
         phone_number
@@ -273,15 +271,14 @@ pub async fn github_oauth_callback_handler(
 
     let github_oauth_user_id = sqlx::query_scalar!(
         r#"
-            INSERT INTO oauth_users (id, provider, username, first_name, last_name, email, picture)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO oauth_users (id, provider, username, full_name, email, picture)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
         "#,
         oauth_user.id,
         oauth_user.provider as Provider,
         oauth_user.username,
-        oauth_user.first_name,
-        oauth_user.last_name,
+        oauth_user.full_name,
         oauth_user.email,
         oauth_user.picture
     )
@@ -324,12 +321,11 @@ pub async fn complete_profile_handler(
                 id,
                 provider AS "provider: Provider",
                 username,
-                first_name,
-                last_name,
+                full_name,
                 email,
+                phone_number,
                 password,
-                picture,
-                phone_number
+                picture
             FROM oauth_users WHERE id = $1
         "#,
         oauth_user_id
@@ -340,12 +336,11 @@ pub async fn complete_profile_handler(
 
     let mut oauth_user_schema = OAuthUserSchema {
         username: None,
-        first_name: None,
-        last_name: None,
+        full_name: None,
         email: None,
+        phone_number: None,
         password: None,
         picture: None,
-        phone_number: None,
     };
 
     let new_user_id = Uuid::new_v4();
@@ -354,11 +349,8 @@ pub async fn complete_profile_handler(
         let name = field.name().unwrap().to_string();
 
         match name.as_str() {
-            "first_name" => {
-                oauth_user_schema.first_name = Some(field.text().await.unwrap());
-            }
-            "last_name" => {
-                oauth_user_schema.last_name = Some(field.text().await.unwrap());
+            "full_name" => {
+                oauth_user_schema.full_name = Some(field.text().await.unwrap());
             }
             "email" => {
                 oauth_user_schema.email = Some(field.text().await.unwrap());
@@ -392,12 +384,11 @@ pub async fn complete_profile_handler(
     let user = sqlx::query_as!(
         User,
         r#"
-        INSERT INTO users (id, first_name, last_name, email, phone_number, password, picture, oauth_user_id)
-        VALUES ($1,$2,$3,$4,$5,$6, $7, $8)
+        INSERT INTO users (id, full_name, email, phone_number, password, picture, oauth_user_id)
+        VALUES ($1,$2,$3,$4,$5,$6, $7)
         RETURNING
             id,
-            first_name,
-            last_name,
+            full_name,
             email,
             phone_number,
             password,
@@ -410,8 +401,7 @@ pub async fn complete_profile_handler(
             updated_at
         "#,
         new_user_id,
-        oauth_user_schema.first_name.unwrap(),
-        oauth_user_schema.last_name.unwrap(),
+        oauth_user_schema.full_name.unwrap(),
         oauth_user_schema.email.unwrap(),
         oauth_user_schema.phone_number,
         hash_password,
@@ -429,7 +419,7 @@ pub async fn complete_profile_handler(
         zepto
             .send_verification_link_email(
                 user.email.clone(),
-                format!("{} {}", user.first_name.clone(), user.last_name.clone()),
+                format!("{}", user.full_name),
                 verification_link,
                 &config,
             )
@@ -562,8 +552,7 @@ pub async fn get_user_handler(
         r#"
             SELECT
                 id,
-                first_name,
-                last_name,
+                full_name,
                 email,
                 phone_number,
                 password,

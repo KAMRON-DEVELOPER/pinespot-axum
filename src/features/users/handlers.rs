@@ -3,7 +3,7 @@ use crate::{
         models::{OAuthUser, User, UserRole, UserStatus},
         schemas::{
             AuthResponse, ContinueWithEmailSchema, GithubOAuthUser, GoogleOAuthUser, OAuthCallback,
-            OAuthUserSchema, PhoneResponse, Tokens,
+            OAuthUserSchema, PhoneResponse, RedirectResponse, Tokens,
         },
     },
     services::{database::Database, zepto::ZeptoMail},
@@ -24,11 +24,10 @@ use axum::{
     Json,
     extract::{ConnectInfo, Multipart, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::{
     TypedHeader,
-    either::Either,
     extract::{PrivateCookieJar, cookie::Cookie},
     headers::{Authorization, UserAgent, authorization::Bearer},
 };
@@ -82,10 +81,12 @@ pub async fn google_oauth_handler(
     State(config): State<Config>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
     State(google_oauth_client): State<GoogleOAuthClient>,
-) -> Result<(PrivateCookieJar, Redirect), AppError> {
+) -> Result<Response, AppError> {
     if optional_oauth_user_id_cookie.is_some() {
-        let to = format!("{}/complete-profile", config.frontend_endpoint);
-        return Ok((jar, Redirect::to(&to)));
+        let response = Json(RedirectResponse {
+            redirect_to: "complete-profile".to_string(),
+        });
+        return Ok((jar, response).into_response());
     }
 
     let (pkce_code_challenge, pkce_code_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -109,7 +110,7 @@ pub async fn google_oauth_handler(
             .secure(config.cookie_secure.unwrap_or(true));
     let jar = jar.add(pkce_verifier_cookie);
 
-    Ok((jar, Redirect::to(auth_url.as_ref())))
+    Ok((jar, Redirect::to(auth_url.as_ref())).into_response())
 }
 
 pub async fn google_oauth_callback_handler(
@@ -119,7 +120,7 @@ pub async fn google_oauth_callback_handler(
     State(config): State<Config>,
     Query(query): Query<OAuthCallback>,
     State(google_oauth_client): State<GoogleOAuthClient>,
-) -> Result<(PrivateCookieJar, Redirect), AppError> {
+) -> Result<Response, AppError> {
     let pkce_verifier = jar
         .get("pkce_verifier")
         .map(|cookie| PkceCodeVerifier::new(cookie.value().to_string()))
@@ -189,8 +190,10 @@ pub async fn google_oauth_callback_handler(
             .secure(config.cookie_secure.unwrap_or(true));
     let jar = jar.add(google_oauth_user_sub_cookie);
 
-    let uri = format!("{}/complete-profile", config.frontend_endpoint);
-    Ok((jar, Redirect::to(&uri)))
+    let response = Json(RedirectResponse {
+        redirect_to: "complete-profile".to_string(),
+    });
+    Ok((jar, response).into_response().into_response())
 }
 
 // -- =====================
@@ -201,10 +204,12 @@ pub async fn github_oauth_handler(
     State(config): State<Config>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
     State(github_oauth_client): State<GithubOAuthClient>,
-) -> Result<(PrivateCookieJar, Redirect), AppError> {
+) -> Result<Response, AppError> {
     if optional_oauth_user_id_cookie.is_some() {
-        let to = format!("{}/complete-profile", config.frontend_endpoint);
-        return Ok((jar, Redirect::to(&to)));
+        let response = Json(RedirectResponse {
+            redirect_to: "complete-profile".to_string(),
+        });
+        return Ok((jar, response).into_response());
     }
 
     let (pkce_code_challenge, pkce_code_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -223,7 +228,7 @@ pub async fn github_oauth_handler(
             .secure(config.cookie_secure.unwrap_or(true));
     let jar = jar.add(pkce_verifier_cookie);
 
-    Ok((jar, Redirect::to(auth_url.as_ref())))
+    Ok((jar, Redirect::to(auth_url.as_ref())).into_response())
 }
 
 pub async fn github_oauth_callback_handler(
@@ -233,7 +238,7 @@ pub async fn github_oauth_callback_handler(
     State(config): State<Config>,
     Query(query): Query<OAuthCallback>,
     State(github_oauth_client): State<GithubOAuthClient>,
-) -> Result<(PrivateCookieJar, Redirect), AppError> {
+) -> Result<Response, AppError> {
     let pkce_verifier = jar
         .get("pkce_verifier")
         .map(|cookie| PkceCodeVerifier::new(cookie.value().to_string()))
@@ -293,8 +298,10 @@ pub async fn github_oauth_callback_handler(
             .secure(config.cookie_secure.unwrap_or(true));
     let jar = jar.add(github_oauth_user_sub_cookie);
 
-    let uri = format!("{}/complete-profile", config.frontend_endpoint);
-    Ok((jar, Redirect::to(&uri)))
+    let response = Json(RedirectResponse {
+        redirect_to: "complete-profile".to_string(),
+    });
+    Ok((jar, response).into_response())
 }
 
 // -- =====================
@@ -456,7 +463,7 @@ pub async fn continue_with_email_handler(
     TypedHeader(_user_agent): TypedHeader<UserAgent>,
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
     Json(continue_with_email_schema): Json<ContinueWithEmailSchema>,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
     debug!(
         "continue_with_email_schema is {:#?}",
         continue_with_email_schema
@@ -481,7 +488,7 @@ pub async fn continue_with_email_handler(
             refresh_token: Some(new_refresh),
         };
         let response = Json(AuthResponse { user, tokens });
-        return Ok(Either::E1((jar, response)));
+        return Ok((jar, response).into_response());
     }
 
     let email_oauth_user_id = Uuid::new_v4().to_string();
@@ -506,8 +513,10 @@ pub async fn continue_with_email_handler(
         .secure(config.cookie_secure.unwrap_or(true));
     let jar = jar.add(email_oauth_user_sub_cookie);
 
-    let uri = format!("{}/complete-profile", config.frontend_endpoint);
-    Ok(Either::E2((jar, Redirect::to(&uri))))
+    let response = Json(RedirectResponse {
+        redirect_to: "complete-profile".to_string(),
+    });
+    Ok((jar, response).into_response())
 }
 
 // -- =====================

@@ -2,31 +2,33 @@ use axum::{
     Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Response},
 };
 
-use axum_extra::{either::Either, extract::PrivateCookieJar};
+use axum_extra::extract::PrivateCookieJar;
 use uuid::Uuid;
 
 use crate::{
     features::{
         listings::{models::Listing, schemas::ListingResponse},
         schemas::Pagination,
+        users::schemas::RedirectResponse,
     },
     services::database::Database,
-    utilities::{config::Config, cookie::OptionalOAuthUserIdCookie, errors::AppError, jwt::Claims},
+    utilities::{cookie::OptionalOAuthUserIdCookie, errors::AppError, jwt::Claims},
 };
 
 pub async fn get_many_listings_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,
-    State(config): State<Config>,
     Query(pagination): Query<Pagination>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<Response, AppError> {
     if optional_oauth_user_id_cookie.is_some() {
-        let uri = format!("{}/complete-profile", config.frontend_endpoint);
-        return Ok(Either::E1((jar, Redirect::to(&uri))));
+        let response = Json(RedirectResponse {
+            redirect_to: "complete-profile".to_string(),
+        });
+        return Ok((jar, response).into_response());
     }
 
     pagination.validate()?;
@@ -54,7 +56,7 @@ pub async fn get_many_listings_handler(
 
     let total = total.unwrap_or(0);
 
-    Ok(Either::E2(Json(ListingResponse { listings, total })))
+    Ok(Json(ListingResponse { listings, total }).into_response())
 }
 
 pub async fn get_one_listing_handler(

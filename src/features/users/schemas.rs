@@ -3,6 +3,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RedirectResponse {
+    pub redirect_to: String,
+}
+
 #[derive(Deserialize, Debug)]
 pub struct OAuthCallback {
     pub(crate) code: String,

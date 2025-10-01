@@ -20,7 +20,9 @@ CREATE TABLE oauth_users (
     phone_number VARCHAR(50),
     password TEXT,
     picture TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_oauth_email UNIQUE(email),
+    CONSTRAINT uq_oauth_phone UNIQUE(phone_number)
 );
 -- =====================
 -- USERS
@@ -35,7 +37,7 @@ CREATE TABLE users (
     role user_role NOT NULL DEFAULT 'regular',
     status user_status NOT NULL DEFAULT 'active',
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-    oauth_user_id VARCHAR(255) REFERENCES oauth_users(id) ON DELETE CASCADE,
+    oauth_user_id VARCHAR(255) NOT NULL REFERENCES oauth_users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -111,6 +113,8 @@ CREATE TABLE favorites (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id, listing_id)
 );
+-- ALTER TABLE users
+-- ADD CONSTRAINT uq_user_oauth UNIQUE (oauth_user_id);
 -- =====================
 -- GOOGLE OAUTH USERS
 -- =====================

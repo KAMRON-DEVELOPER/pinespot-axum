@@ -21,6 +21,7 @@ pub enum UserStatus {
 
 #[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
 #[sqlx(default)]
+#[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: Uuid,
     pub full_name: String,
@@ -45,6 +46,7 @@ pub enum Provider {
 }
 
 #[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct OAuthUser {
     pub id: String,
     pub provider: Provider,

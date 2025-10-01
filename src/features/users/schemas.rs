@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 #[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub struct RedirectResponse {
     pub redirect_to: String,
 }
@@ -32,6 +32,7 @@ pub struct AuthResponse {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Tokens {
     pub access_token: String,
     pub refresh_token: Option<String>,
@@ -75,7 +76,7 @@ pub struct GithubOAuthUser {
 }
 
 #[derive(Deserialize, Default, Debug)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct OAuthUserSchema {
     pub username: Option<String>,
     pub full_name: Option<String>,

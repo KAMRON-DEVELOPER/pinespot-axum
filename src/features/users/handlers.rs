@@ -61,7 +61,8 @@ pub async fn get_oauth_user_handler(
                 email,
                 phone_number,
                 password,
-                picture
+                picture,
+                created_at
             FROM oauth_users WHERE id = $1
         "#,
         oauth_user_id
@@ -305,6 +306,103 @@ pub async fn github_oauth_callback_handler(
 }
 
 // -- =====================
+// -- CONTINUE WITH EMAIL
+// -- =====================
+pub async fn continue_with_email_handler(
+    jar: PrivateCookieJar,
+    State(database): State<Database>,
+    State(config): State<Config>,
+    TypedHeader(_user_agent): TypedHeader<UserAgent>,
+    ConnectInfo(_addr): ConnectInfo<SocketAddr>,
+    Json(continue_with_email_schema): Json<ContinueWithEmailSchema>,
+) -> Result<Response, AppError> {
+    debug!(
+        "continue_with_email_schema is {:#?}",
+        continue_with_email_schema
+    );
+
+    let maybe_user = continue_with_email_schema.verify(&database).await?;
+
+    if let Some(user) = maybe_user {
+        let new_access = create_token(&config, user.id, TokenType::Access)?;
+        let new_refresh = create_token(&config, user.id, TokenType::Refresh)?;
+
+        let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
+        let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
+            .http_only(true)
+            .same_site(SameSite::Lax)
+            .max_age(CookieDuration::days(max_age_days))
+            .secure(config.cookie_secure.unwrap_or(true));
+        let jar = jar.add(refresh_cookie);
+
+        let tokens = Tokens {
+            access_token: new_access,
+            refresh_token: Some(new_refresh),
+        };
+        let response = Json(AuthResponse { user, tokens });
+        return Ok((jar, response).into_response());
+    }
+
+    let email_oauth_user_id = Uuid::new_v4().to_string();
+    let email_oauth_user_id = sqlx::query_scalar!(
+        r#"
+            INSERT INTO oauth_users (id, provider, email, password)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+        "#,
+        email_oauth_user_id,
+        Provider::Email as Provider,
+        continue_with_email_schema.email,
+        continue_with_email_schema.password,
+    )
+    .fetch_one(&database.pool)
+    .await?;
+
+    let email_oauth_user_sub_cookie = Cookie::build(("email_oauth_user_id", email_oauth_user_id))
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::days(365))
+        .secure(config.cookie_secure.unwrap_or(true));
+    let jar = jar.add(email_oauth_user_sub_cookie);
+
+    let response = Json(RedirectResponse {
+        redirect_to: "complete-profile".to_string(),
+    });
+    Ok((jar, response).into_response())
+}
+
+// -- =====================
+// -- VERIFY
+// -- =====================
+pub async fn verify_handler(
+    State(config): State<Config>,
+    State(database): State<Database>,
+    Query(token): Query<String>,
+    // TypedHeader(_user_agent): TypedHeader<UserAgent>,
+    // ConnectInfo(_addr): ConnectInfo<SocketAddr>,
+) -> Result<impl IntoResponse, AppError> {
+    let verification_token_claims = verify_token(&config, &token)?;
+
+    if verification_token_claims.typ != TokenType::EmailVerification {
+        return Err(AppError::InvalidTokenError);
+    }
+
+    let query_result = sqlx::query!(
+        "UPDATE users SET email_verified = TRUE WHERE id = $1",
+        verification_token_claims.sub
+    )
+    .execute(&database.pool)
+    .await?;
+
+    match query_result.rows_affected() {
+        0 => Err(AppError::QueryError(
+            "User couldn't set to verified".to_string(),
+        )),
+        _ => Ok(StatusCode::OK),
+    }
+}
+
+// -- =====================
 // -- COMPLETE PROFILE
 // -- =====================
 pub async fn complete_profile_handler(
@@ -332,7 +430,8 @@ pub async fn complete_profile_handler(
                 email,
                 phone_number,
                 password,
-                picture
+                picture,
+                created_at
             FROM oauth_users WHERE id = $1
         "#,
         oauth_user_id
@@ -451,103 +550,6 @@ pub async fn complete_profile_handler(
     };
     let response = Json(AuthResponse { user, tokens });
     Ok((jar, response))
-}
-
-// -- =====================
-// -- CONTINUE WITH EMAIL
-// -- =====================
-pub async fn continue_with_email_handler(
-    jar: PrivateCookieJar,
-    State(database): State<Database>,
-    State(config): State<Config>,
-    TypedHeader(_user_agent): TypedHeader<UserAgent>,
-    ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    Json(continue_with_email_schema): Json<ContinueWithEmailSchema>,
-) -> Result<Response, AppError> {
-    debug!(
-        "continue_with_email_schema is {:#?}",
-        continue_with_email_schema
-    );
-
-    let maybe_user = continue_with_email_schema.verify(&database).await?;
-
-    if let Some(user) = maybe_user {
-        let new_access = create_token(&config, user.id, TokenType::Access)?;
-        let new_refresh = create_token(&config, user.id, TokenType::Refresh)?;
-
-        let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
-        let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
-            .http_only(true)
-            .same_site(SameSite::Lax)
-            .max_age(CookieDuration::days(max_age_days))
-            .secure(config.cookie_secure.unwrap_or(true));
-        let jar = jar.add(refresh_cookie);
-
-        let tokens = Tokens {
-            access_token: new_access,
-            refresh_token: Some(new_refresh),
-        };
-        let response = Json(AuthResponse { user, tokens });
-        return Ok((jar, response).into_response());
-    }
-
-    let email_oauth_user_id = Uuid::new_v4().to_string();
-    let email_oauth_user_id = sqlx::query_scalar!(
-        r#"
-            INSERT INTO oauth_users (id, provider, email, password)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id
-        "#,
-        email_oauth_user_id,
-        Provider::Email as Provider,
-        continue_with_email_schema.email,
-        continue_with_email_schema.password,
-    )
-    .fetch_one(&database.pool)
-    .await?;
-
-    let email_oauth_user_sub_cookie = Cookie::build(("email_oauth_user_id", email_oauth_user_id))
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        .max_age(CookieDuration::days(365))
-        .secure(config.cookie_secure.unwrap_or(true));
-    let jar = jar.add(email_oauth_user_sub_cookie);
-
-    let response = Json(RedirectResponse {
-        redirect_to: "complete-profile".to_string(),
-    });
-    Ok((jar, response).into_response())
-}
-
-// -- =====================
-// -- VERIFY
-// -- =====================
-pub async fn verify_handler(
-    State(config): State<Config>,
-    State(database): State<Database>,
-    Query(token): Query<String>,
-    // TypedHeader(_user_agent): TypedHeader<UserAgent>,
-    // ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-) -> Result<impl IntoResponse, AppError> {
-    let verification_token_claims = verify_token(&config, &token)?;
-
-    if verification_token_claims.typ != TokenType::EmailVerification {
-        return Err(AppError::InvalidTokenError);
-    }
-
-    let query_result = sqlx::query!(
-        "UPDATE users SET email_verified = TRUE WHERE id = $1",
-        verification_token_claims.sub
-    )
-    .execute(&database.pool)
-    .await?;
-
-    match query_result.rows_affected() {
-        0 => Err(AppError::QueryError(
-            "User couldn't set to verified".to_string(),
-        )),
-        _ => Ok(StatusCode::OK),
-    }
 }
 
 pub async fn get_user_handler(

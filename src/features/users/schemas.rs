@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use validator::Validate;
 
 #[derive(Deserialize, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct RedirectResponse {
     pub redirect_to: String,
 }

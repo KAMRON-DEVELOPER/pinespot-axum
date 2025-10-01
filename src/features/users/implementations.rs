@@ -23,6 +23,7 @@ impl From<GoogleOAuthUser> for OAuthUser {
             password: None,
             picture: g.picture,
             phone_number: g.phone_number,
+            created_at: None,
         }
     }
 }
@@ -38,6 +39,7 @@ impl From<GithubOAuthUser> for OAuthUser {
             password: None,
             picture: Some(g.avatar_url),
             phone_number: None,
+            created_at: None,
         }
     }
 }

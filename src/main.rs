@@ -103,6 +103,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Method::GET,
             Method::POST,
             Method::PUT,
+            Method::PATCH,
             Method::DELETE,
             Method::OPTIONS,
         ])
@@ -111,53 +112,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
             header::ACCEPT,
+            // header::ACCESS_CONTROL_ALLOW_ORIGIN,
             HeaderName::from_static("x-requested-with"),
         ]);
 
-    // Build router
+    let tracing_layer = TraceLayer::new_for_http()
+        .on_request(|request: &http::Request<_>, _span: &tracing::Span| {
+            let method = request.method();
+            let uri = request.uri();
+            let matched_path = request
+                .extensions()
+                .get::<axum::extract::MatchedPath>()
+                .map(|p| p.as_str())
+                .unwrap_or("<unknown>");
+
+            info!("{} {} {}", matched_path, method, uri);
+        })
+        .on_response(DefaultOnResponse::new().level(tracing::Level::INFO));
+
     let app = axum::Router::new()
         .merge(listings::routes())
         .merge(users::routes())
         .fallback(not_found_handler)
         .layer(cors)
-        .layer(
-            TraceLayer::new_for_http()
-                .on_request(|request: &http::Request<_>, _span: &tracing::Span| {
-                    let method = request.method();
-                    let uri = request.uri();
-                    let matched_path = request
-                        .extensions()
-                        .get::<axum::extract::MatchedPath>()
-                        .map(|p| p.as_str())
-                        .unwrap_or("<unknown>");
-
-                    info!("{} {} {}", matched_path, method, uri);
-                })
-                .on_response(DefaultOnResponse::new().level(tracing::Level::INFO)),
-        )
-        // .layer(
-        //     TraceLayer::new_for_http()
-        //         // Create our own span for the request and include the matched path. The matched
-        //         // path is useful for figuring out which handler the request was routed to.
-        //         .make_span_with(|req: &Request| {
-        //             let method = req.method();
-        //             let uri = req.uri();
-        //             // axum automatically adds this extension.
-        //             let matched_path = req
-        //                 .extensions()
-        //                 .get::<MatchedPath>()
-        //                 .map(|matched_path| matched_path.as_str());
-        //             tracing::debug_span!("request ", %method, %uri, matched_path)
-        //         })
-        //         // By default `TraceLayer` will log 5xx responses but we're doing our specific
-        //         // logging of errors so disable that
-        //         .on_failure(()),
-        // )
+        .layer(tracing_layer)
         .with_state(app_state);
 
     // Run Axum server
     let addr = SocketAddr::from(([0, 0, 0, 0], 8001));
-    info!("Starting server on {:#?}", addr);
+    info!("Server running on port {:#?}", addr);
 
     let listener = tokio::net::TcpListener::bind(config.server_addres)
         .await
@@ -201,3 +184,22 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 }
+
+// .layer(
+//     TraceLayer::new_for_http()
+//         // Create our own span for the request and include the matched path. The matched
+//         // path is useful for figuring out which handler the request was routed to.
+//         .make_span_with(|req: &Request| {
+//             let method = req.method();
+//             let uri = req.uri();
+//             // axum automatically adds this extension.
+//             let matched_path = req
+//                 .extensions()
+//                 .get::<MatchedPath>()
+//                 .map(|matched_path| matched_path.as_str());
+//             tracing::debug_span!("request ", %method, %uri, matched_path)
+//         })
+//         // By default `TraceLayer` will log 5xx responses but we're doing our specific
+//         // logging of errors so disable that
+//         .on_failure(()),
+// )

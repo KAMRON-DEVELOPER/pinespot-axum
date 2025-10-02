@@ -6,6 +6,7 @@ use axum::{
 };
 
 use axum_extra::extract::PrivateCookieJar;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -24,6 +25,19 @@ pub async fn get_many_listings_handler(
     Query(pagination): Query<Pagination>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
 ) -> Result<Response, AppError> {
+    debug!("Cookies in jar:");
+    for cookie in jar.iter() {
+        debug!(
+            "  Cookie name: {}, value: {}",
+            cookie.name(),
+            cookie.value()
+        );
+    }
+    debug!(
+        "optional_oauth_user_id_cookie: {:?}",
+        optional_oauth_user_id_cookie
+    );
+
     if optional_oauth_user_id_cookie.is_some() {
         let response = Json(RedirectResponse {
             redirect_to: "complete-profile".to_string(),

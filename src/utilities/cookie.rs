@@ -143,6 +143,11 @@ where
         // let jar = CookieJar::from_request_parts(parts, state).await?;
         let jar = PrivateCookieJar::<Key>::from_request_parts(parts, state).await?;
 
+        let itr = jar.iter();
+        for c in itr {
+            debug!("COOKIE (*) {}", c);
+        }
+
         if let Some(cookie) = jar.get("google_oauth_user_sub") {
             return Ok(Self(Some(OAuthUserIdCookie {
                 provider: Provider::Google,

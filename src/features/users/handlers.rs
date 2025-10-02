@@ -690,39 +690,15 @@ pub async fn refresh_handler(
 
     Ok((jar, response))
 }
+pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
+    let mut jar = jar;
 
-pub async fn logout_handler(
-    jar: PrivateCookieJar,
-    State(config): State<Config>,
-) -> impl IntoResponse {
-    let cookies = jar.iter();
-    for c in cookies {
-        debug!("Cookie name: {}, value: {}", c.name(), c.value());
+    let cookie_names: Vec<String> = jar.iter().map(|cookie| cookie.name().to_string()).collect();
+
+    for name in cookie_names {
+        debug!("Removing cookie: {}", name);
+        jar = jar.remove(Cookie::from(name));
     }
-
-    let email_oauth_user_id = Cookie::build(("email_oauth_user_id", ""))
-        .http_only(true)
-        .path("/")
-        .same_site(SameSite::Lax)
-        .secure(config.cookie_secure.unwrap_or(true))
-        .max_age(CookieDuration::seconds(0));
-    let github_oauth_user_id = Cookie::build(("github_oauth_user_id", ""))
-        .http_only(true)
-        .path("/")
-        .same_site(SameSite::Lax)
-        .secure(config.cookie_secure.unwrap_or(true))
-        .max_age(CookieDuration::seconds(0));
-    let google_oauth_user_sub = Cookie::build(("google_oauth_user_sub", ""))
-        .http_only(true)
-        .path("/")
-        .same_site(SameSite::Lax)
-        .secure(config.cookie_secure.unwrap_or(true))
-        .max_age(CookieDuration::seconds(0));
-
-    let jar = jar
-        .remove(email_oauth_user_id)
-        .remove(github_oauth_user_id)
-        .remove(google_oauth_user_sub);
 
     (
         jar,

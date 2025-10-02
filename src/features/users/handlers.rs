@@ -49,9 +49,6 @@ pub async fn get_oauth_user_handler(
     oauth_user_id_cookie: OAuthUserIdCookie,
 ) -> Result<impl IntoResponse, AppError> {
     let oauth_user_id = oauth_user_id_cookie.id;
-    debug!("oauth_user_id is {:#?}", oauth_user_id);
-    debug!("provider is {:#?}", oauth_user_id_cookie.provider);
-
     let oauth_user = sqlx::query_as!(
         OAuthUser,
         r#"

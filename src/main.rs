@@ -7,20 +7,6 @@ pub mod utilities;
 use std::net::SocketAddr;
 use std::result::Result::Ok;
 
-use axum::{
-    extract::ConnectInfo,
-    http::{self, HeaderName, HeaderValue, Method, StatusCode, header},
-    response::IntoResponse,
-};
-use axum_extra::extract::cookie::Key;
-use tokio::signal;
-use tower_http::{
-    cors::CorsLayer,
-    trace::{DefaultOnResponse, TraceLayer},
-};
-use tracing::info;
-use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
-
 use crate::{
     features::{listings, users},
     services::{
@@ -35,6 +21,19 @@ use crate::{
         oauth_client_builder::{build_github_oauth_client, build_google_oauth_client},
     },
 };
+use axum::{
+    extract::ConnectInfo,
+    http::{self, HeaderName, HeaderValue, Method, StatusCode, header},
+    response::IntoResponse,
+};
+use axum_extra::extract::cookie::Key;
+use tokio::signal;
+use tower_http::{
+    cors::CorsLayer,
+    trace::{DefaultOnResponse, TraceLayer},
+};
+use tracing::info;
+use tracing_subscriber::{EnvFilter, LocalTime, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,14 +52,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::init().await;
 
     let filter = EnvFilter::new("pinespot_axum=debug,tower_http=warn,hyper=warn,reqwest=warn");
+    let timer = LocalTime::new(
+        time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap(),
+    );
     tracing_subscriber::registry()
         .with(filter)
         .with(
             tracing_subscriber::fmt::layer()
-                .with_target(true)
-                .with_file(true)
-                .with_line_number(true)
-                .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW),
+                .with_target(false)
+                .with_file(false)
+                .with_line_number(false)
+                .with_timer(timer),
+            // .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW),
         )
         .init();
 

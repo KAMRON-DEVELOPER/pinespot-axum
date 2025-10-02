@@ -27,6 +27,7 @@ use axum::{
     response::IntoResponse,
 };
 use axum_extra::extract::cookie::Key;
+use time::macros::format_description;
 use tokio::signal;
 use tower_http::{
     cors::CorsLayer,
@@ -34,8 +35,24 @@ use tower_http::{
 };
 use tracing::info;
 use tracing_subscriber::{
-    EnvFilter, LocalTime, fmt::time, layer::SubscriberExt, util::SubscriberInitExt,
+    EnvFilter,
+    fmt::{
+        self,
+        time::{FormatTime, LocalTime},
+    },
+    layer::SubscriberExt,
+    util::SubscriberInitExt,
 };
+
+// Custom time formatter for YYYY-MM-DD HH:MM:SS format
+struct CustomTimeFormat;
+
+impl FormatTime for CustomTimeFormat {
+    fn format_time(&self, w: &mut fmt::format::Writer<'_>) -> std::fmt::Result {
+        let now = chrono::Local::now();
+        write!(w, "{}", now.format("%Y-%m-%d %H:%M:%S"))
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -54,9 +71,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::init().await;
 
     let filter = EnvFilter::new("pinespot_axum=debug,tower_http=warn,hyper=warn,reqwest=warn");
-    let timer = LocalTime::new(
-        time::format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]").unwrap(),
-    );
+    let timer = LocalTime::new(format_description!(
+        "[year]-[month]-[day] [hour]:[minute]:[second]"
+    ));
     tracing_subscriber::registry()
         .with(filter)
         .with(

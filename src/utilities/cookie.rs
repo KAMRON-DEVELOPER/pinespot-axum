@@ -6,7 +6,6 @@ use axum::{
 use axum_extra::extract::{PrivateCookieJar, cookie::CookieJar};
 use cookie::Key;
 use serde::{Deserialize, Serialize};
-use tracing::debug;
 use uuid::Uuid;
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -92,10 +91,6 @@ where
         let jar = PrivateCookieJar::<Key>::from_request_parts(parts, state).await?;
 
         if let Some(cookie) = jar.get("google_oauth_user_sub") {
-            debug!(
-                "Cookie value from google_oauth_user_sub is {}",
-                cookie.value()
-            );
             return Ok(Self {
                 provider: Provider::Google,
                 id: cookie.value().to_string(),
@@ -103,10 +98,6 @@ where
         }
 
         if let Some(cookie) = jar.get("github_oauth_user_id") {
-            debug!(
-                "Cookie value from github_oauth_user_id is {}",
-                cookie.value()
-            );
             let id = cookie.value().parse::<i64>().map_err(|_| {
                 AppError::ValidationError("Github oauth user id is not integer".to_string())
             })?;
@@ -117,10 +108,6 @@ where
         }
 
         if let Some(cookie) = jar.get("email_oauth_user_id") {
-            debug!(
-                "Cookie value from email_oauth_user_id is {}",
-                cookie.value()
-            );
             let id = Uuid::try_parse(cookie.value()).map_err(|_| AppError::InvalidTokenError)?;
             return Ok(Self {
                 provider: Provider::Email,
@@ -142,11 +129,6 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // let jar = CookieJar::from_request_parts(parts, state).await?;
         let jar = PrivateCookieJar::<Key>::from_request_parts(parts, state).await?;
-
-        let itr = jar.iter();
-        for c in itr {
-            debug!("COOKIE (*) {}", c);
-        }
 
         if let Some(cookie) = jar.get("google_oauth_user_sub") {
             return Ok(Self(Some(OAuthUserIdCookie {

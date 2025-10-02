@@ -35,24 +35,8 @@ use tower_http::{
 };
 use tracing::info;
 use tracing_subscriber::{
-    EnvFilter,
-    fmt::{
-        self,
-        time::{FormatTime, LocalTime},
-    },
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
+    EnvFilter, fmt::time::LocalTime, layer::SubscriberExt, util::SubscriberInitExt,
 };
-
-// Custom time formatter for YYYY-MM-DD HH:MM:SS format
-struct CustomTimeFormat;
-
-impl FormatTime for CustomTimeFormat {
-    fn format_time(&self, w: &mut fmt::format::Writer<'_>) -> std::fmt::Result {
-        let now = chrono::Local::now();
-        write!(w, "{}", now.format("%Y-%m-%d %H:%M:%S"))
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -79,8 +63,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(
             tracing_subscriber::fmt::layer()
                 .with_target(false)
-                .with_file(false)
-                .with_line_number(false)
+                .with_file(true)
+                .with_line_number(true)
                 .with_timer(timer),
             // .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NEW),
         )
@@ -225,3 +209,13 @@ async fn shutdown_signal() {
 //         // logging of errors so disable that
 //         .on_failure(()),
 // )
+
+// Custom time formatter for YYYY-MM-DD HH:MM:SS format
+// struct CustomTimeFormat;
+
+// impl FormatTime for CustomTimeFormat {
+//     fn format_time(&self, w: &mut fmt::format::Writer<'_>) -> std::fmt::Result {
+//         let now = chrono::Local::now();
+//         write!(w, "{}", now.format("%Y-%m-%d %H:%M:%S"))
+//     }
+// }

@@ -132,7 +132,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|p| p.as_str())
                 .unwrap_or("<unknown>");
 
-            info!("{} {} {}", matched_path, method, uri);
+            if uri.query().is_some() {
+                info!("{} {} {}", method, matched_path, uri);
+            } else {
+                info!("{} {}", method, matched_path);
+            }
         })
         .on_response(DefaultOnResponse::new().level(tracing::Level::INFO));
 

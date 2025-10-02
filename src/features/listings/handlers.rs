@@ -25,14 +25,6 @@ pub async fn get_many_listings_handler(
     Query(pagination): Query<Pagination>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
 ) -> Result<Response, AppError> {
-    debug!("Cookies in jar:");
-    for cookie in jar.iter() {
-        debug!(
-            "  Cookie name: {}, value: {}",
-            cookie.name(),
-            cookie.value()
-        );
-    }
     debug!(
         "optional_oauth_user_id_cookie: {:?}",
         optional_oauth_user_id_cookie
@@ -42,6 +34,7 @@ pub async fn get_many_listings_handler(
         let response = Json(RedirectResponse {
             redirect_to: "complete-profile".to_string(),
         });
+        debug!("REDIRECTING");
         return Ok((jar, response).into_response());
     }
 

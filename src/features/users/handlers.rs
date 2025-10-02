@@ -110,6 +110,7 @@ pub async fn google_oauth_handler(
     let pkce_verifier_cookie =
         Cookie::build(("pkce_verifier", pkce_code_verifier.secret().to_string()))
             .http_only(true)
+            .path("/")
             .same_site(SameSite::Lax)
             .max_age(CookieDuration::days(365))
             .secure(config.cookie_secure.unwrap_or(true));
@@ -190,6 +191,7 @@ pub async fn google_oauth_callback_handler(
     let google_oauth_user_sub_cookie =
         Cookie::build(("google_oauth_user_sub", google_oauth_user_sub))
             .http_only(true)
+            .path("/")
             .same_site(SameSite::Lax)
             .max_age(CookieDuration::days(365))
             .secure(config.cookie_secure.unwrap_or(true));
@@ -228,6 +230,7 @@ pub async fn github_oauth_handler(
     let pkce_verifier_cookie =
         Cookie::build(("pkce_verifier", pkce_code_verifier.secret().to_string()))
             .http_only(true)
+            .path("/")
             .same_site(SameSite::Lax)
             .max_age(CookieDuration::days(365))
             .secure(config.cookie_secure.unwrap_or(true));
@@ -298,6 +301,7 @@ pub async fn github_oauth_callback_handler(
     let github_oauth_user_sub_cookie =
         Cookie::build(("github_oauth_user_id", github_oauth_user_id))
             .http_only(true)
+            .path("/")
             .same_site(SameSite::Lax)
             .max_age(CookieDuration::days(365))
             .secure(config.cookie_secure.unwrap_or(true));
@@ -336,6 +340,7 @@ pub async fn continue_with_email_handler(
         let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
         let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
             .http_only(true)
+            .path("/")
             .same_site(SameSite::Lax)
             .max_age(CookieDuration::days(max_age_days))
             .secure(config.cookie_secure.unwrap_or(true));
@@ -368,6 +373,7 @@ pub async fn continue_with_email_handler(
     debug!("email_oauth_user_id_str is {:#?}", email_oauth_user_id_str);
     let email_oauth_user_sub_cookie = Cookie::build(("email_oauth_user_id", email_oauth_user_id))
         .http_only(true)
+        .path("/")
         .same_site(SameSite::Lax)
         .max_age(CookieDuration::days(365))
         .secure(config.cookie_secure.unwrap_or(true));
@@ -546,6 +552,7 @@ pub async fn complete_profile_handler(
     let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
     let refresh_cookie = Cookie::build(("refresh_token", new_refresh.clone()))
         .http_only(true)
+        .path("/")
         .same_site(SameSite::Lax)
         .max_age(CookieDuration::days(max_age_days))
         .secure(config.cookie_secure.unwrap_or(true));
@@ -662,6 +669,7 @@ pub async fn refresh_handler(
             let max_age_days = config.refresh_token_expire_in_days.unwrap_or(30);
             let cookie = Cookie::build(("refresh_token", refresh.clone()))
                 .http_only(true)
+                .path("/")
                 .same_site(SameSite::Lax)
                 .max_age(CookieDuration::days(max_age_days))
                 .secure(config.cookie_secure.unwrap_or(true));
@@ -683,21 +691,29 @@ pub async fn refresh_handler(
     Ok((jar, response))
 }
 
-pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
-    let itr = jar.iter();
-    for c in itr {
-        debug!("COOKIE (*) {}", c);
-    }
+pub async fn logout_handler(
+    // jar: PrivateCookieJar,
+    OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
+) -> impl IntoResponse {
+    debug!(
+        "optional_oauth_user_id_cookie: {:#?}",
+        optional_oauth_user_id_cookie
+    );
 
-    if let Some(cookie) = jar.get("google_oauth_user_sub") {
-        debug!("google_oauth_user_sub is {:#?}", cookie);
-    }
-    if let Some(cookie) = jar.get("github_oauth_user_id") {
-        debug!("github_oauth_user_id is {:#?}", cookie);
-    }
-    if let Some(cookie) = jar.get("email_oauth_user_id") {
-        debug!("email_oauth_user_id is {:#?}", cookie);
-    }
+    // let itr = jar.iter();
+    // for c in itr {
+    //     debug!("COOKIE (*) {}", c);
+    // }
+
+    // if let Some(cookie) = jar.get("google_oauth_user_sub") {
+    //     debug!("google_oauth_user_sub is {:#?}", cookie);
+    // }
+    // if let Some(cookie) = jar.get("github_oauth_user_id") {
+    //     debug!("github_oauth_user_id is {:#?}", cookie);
+    // }
+    // if let Some(cookie) = jar.get("email_oauth_user_id") {
+    //     debug!("email_oauth_user_id is {:#?}", cookie);
+    // }
 
     // let email_oauth_user_id = Cookie::build(("email_oauth_user_id", ""))
     //     .http_only(true)
@@ -721,7 +737,7 @@ pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
     //     .remove(google_oauth_user_sub);
 
     (
-        jar,
+        // jar,
         Json(json!({
             "message": "all cookies cleared"
         })),

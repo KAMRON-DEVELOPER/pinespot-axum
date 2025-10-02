@@ -17,6 +17,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/profile", delete(handlers::delete_user_handler))
         .route("/api/v1/logout", get(handlers::logout_handler))
         .route("/api/v1/auth/refresh", delete(handlers::refresh_handler))
+        .route("/api/v1/auth/logout", get(handlers::logout_handler))
         .route("/api/v1/auth/user", get(handlers::get_oauth_user_handler))
         // Unified email continue
         .route(

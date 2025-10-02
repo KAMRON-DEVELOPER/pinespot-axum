@@ -33,7 +33,9 @@ use tower_http::{
     trace::{DefaultOnResponse, TraceLayer},
 };
 use tracing::info;
-use tracing_subscriber::{EnvFilter, LocalTime, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+    EnvFilter, LocalTime, fmt::time, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

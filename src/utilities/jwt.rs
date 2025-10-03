@@ -36,8 +36,8 @@ pub fn create_token(config: &Config, user_id: Uuid, typ: TokenType) -> Result<St
 
     let exp = now
         + match typ {
-            TokenType::Access => Duration::days(config.access_token_expire_in_minute.unwrap()),
-            TokenType::Refresh => Duration::minutes(config.refresh_token_expire_in_days.unwrap()),
+            TokenType::Access => Duration::minutes(config.access_token_expire_in_minute.unwrap()),
+            TokenType::Refresh => Duration::days(config.refresh_token_expire_in_days.unwrap()),
             TokenType::EmailVerification => {
                 Duration::hours(config.email_verification_token_expire_in_hours.unwrap())
             }

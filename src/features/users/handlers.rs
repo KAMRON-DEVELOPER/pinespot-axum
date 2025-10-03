@@ -654,12 +654,6 @@ pub async fn refresh_handler(
     jar: PrivateCookieJar,
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
 ) -> Result<impl IntoResponse, AppError> {
-    let cs = jar.iter();
-
-    for c in cs {
-        debug!("cookie name refresh endpoint is {}", c.name());
-    }
-
     let (token, is_web) = if let Some(cookie) = jar.get("refresh_token") {
         (cookie.value().to_string(), true)
     } else if let Some(TypedHeader(Authorization(bearer))) = auth_header {
@@ -669,7 +663,6 @@ pub async fn refresh_handler(
     };
 
     let claims = verify_token(&config, &token)?;
-    debug!("claims: {:#?}", claims);
     if claims.typ != TokenType::Refresh {
         return Err(AppError::Unauthorized("Refresh token required".into()));
     }

@@ -691,14 +691,42 @@ pub async fn refresh_handler(
 
     Ok((jar, response))
 }
+
 pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
     let mut jar = jar;
 
-    let cookie_names: Vec<String> = jar.iter().map(|cookie| cookie.name().to_string()).collect();
+    // collect cookies into owned values first
+    let cookies: Vec<(String, String, bool, Option<String>, Option<SameSite>, bool)> = jar
+        .iter()
+        .map(|c| {
+            (
+                c.name().to_string(),
+                c.value().to_string(),
+                c.http_only().unwrap_or(true),
+                c.path().map(|p| p.to_string()),
+                c.same_site(),
+                c.secure().unwrap_or(false),
+            )
+        })
+        .collect();
 
-    for name in cookie_names {
+    for (name, value, http_only, path, same_site, secure) in cookies {
         debug!("Removing cookie: {}", name);
-        jar = jar.remove(Cookie::from(name));
+
+        let mut removal = Cookie::build((name, value))
+            .http_only(http_only)
+            .secure(secure)
+            .max_age(CookieDuration::seconds(0));
+
+        if let Some(path) = path {
+            removal = removal.path(path);
+        }
+
+        if let Some(same_site) = same_site {
+            removal = removal.same_site(same_site);
+        }
+
+        jar = jar.remove(removal);
     }
 
     (
@@ -707,5 +735,4 @@ pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
             "message": "all cookies cleared"
         })),
     )
-        .into_response()
 }

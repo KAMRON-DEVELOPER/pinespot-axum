@@ -61,6 +61,10 @@ pub enum AppError {
     InvalidTokenError,
     #[error("Missing authorization token error")]
     MissingAuthorizationToken,
+    #[error("Missing acces token error")]
+    MissingAccessToken,
+    #[error("Missing refresh token error")]
+    MissingRefreshToken,
     #[error("{0} token required")]
     Unauthorized(String),
     #[error("Missing oauth id error")]
@@ -271,6 +275,13 @@ impl IntoResponse for AppError {
             Self::MissingAuthorizationToken => (
                 StatusCode::UNAUTHORIZED,
                 "Missing authorization token".to_string(),
+            ),
+            Self::MissingAccessToken => {
+                (StatusCode::UNAUTHORIZED, "Missing access token".to_string())
+            }
+            Self::MissingRefreshToken => (
+                StatusCode::UNAUTHORIZED,
+                "Missing refresh token".to_string(),
             ),
             Self::Unauthorized(e) => (StatusCode::UNAUTHORIZED, e),
             Self::MissingOAuthIdError => (

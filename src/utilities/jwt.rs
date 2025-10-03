@@ -36,8 +36,8 @@ pub fn create_token(config: &Config, user_id: Uuid, typ: TokenType) -> Result<St
 
     let exp = now
         + match typ {
-            TokenType::Access => Duration::days(config.refresh_token_expire_in_days.unwrap()),
-            TokenType::Refresh => Duration::minutes(config.access_token_expire_in_minute.unwrap()),
+            TokenType::Access => Duration::days(config.access_token_expire_in_minute.unwrap()),
+            TokenType::Refresh => Duration::minutes(config.refresh_token_expire_in_days.unwrap()),
             TokenType::EmailVerification => {
                 Duration::hours(config.email_verification_token_expire_in_hours.unwrap())
             }
@@ -74,7 +74,7 @@ where
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
-            .map_err(|_| AppError::MissingAuthorizationToken)?;
+            .map_err(|_| AppError::MissingAccessToken)?;
 
         let config = Config::from_ref(state);
 

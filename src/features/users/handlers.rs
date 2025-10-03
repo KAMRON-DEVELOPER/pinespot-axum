@@ -622,8 +622,14 @@ pub async fn get_user_handler(
     Ok(Json(user))
 }
 
+// -- =====================
+// -- UPDATE USER
+// -- =====================
 pub async fn update_user_handler() {}
 
+// -- =====================
+// -- DELETE USER
+// -- =====================
 pub async fn delete_user_handler(
     claims: Claims,
     State(database): State<Database>,
@@ -640,20 +646,30 @@ pub async fn delete_user_handler(
     }
 }
 
+// -- =====================
+// -- REFRESH TOKEN
+// -- =====================
 pub async fn refresh_handler(
     State(config): State<Config>,
     jar: PrivateCookieJar,
     auth_header: Option<TypedHeader<Authorization<Bearer>>>,
 ) -> Result<impl IntoResponse, AppError> {
+    let cs = jar.iter();
+
+    for c in cs {
+        debug!("cookie name refresh endpoint is {}", c.name());
+    }
+
     let (token, is_web) = if let Some(cookie) = jar.get("refresh_token") {
         (cookie.value().to_string(), true)
     } else if let Some(TypedHeader(Authorization(bearer))) = auth_header {
         (bearer.token().to_string(), false)
     } else {
-        return Err(AppError::MissingAuthorizationToken);
+        return Err(AppError::MissingRefreshToken);
     };
 
     let claims = verify_token(&config, &token)?;
+    debug!("claims: {:#?}", claims);
     if claims.typ != TokenType::Refresh {
         return Err(AppError::Unauthorized("Refresh token required".into()));
     }
@@ -692,6 +708,9 @@ pub async fn refresh_handler(
     Ok((jar, response))
 }
 
+// -- =====================
+// -- LOGOUT
+// -- =====================
 pub async fn logout_handler(jar: PrivateCookieJar) -> impl IntoResponse {
     let mut jar = jar;
 

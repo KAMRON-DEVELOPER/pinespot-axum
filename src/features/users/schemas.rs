@@ -3,6 +3,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
 
+#[derive(Deserialize, Debug)]
+pub struct VerifyQuery {
+    pub token: String,
+}
+
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct RedirectResponse {

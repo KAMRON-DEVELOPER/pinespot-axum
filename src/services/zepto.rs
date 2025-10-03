@@ -1,5 +1,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use crate::utilities::{config::Config, errors::AppError};
 
@@ -75,13 +76,15 @@ impl ZeptoMail {
             to: vec![Recipient {
                 email_address: EmailAddress {
                     address: to_email.to_string(),
-                    name,
+                    name: name.clone(),
                 },
             }],
             merge_info: serde_json::json!({
                 "verification_link": verification_link
             }),
         };
+
+        debug!("Sending email to '{}' with email '{}'", name, to_email);
 
         let api_key = config
             .email_service_api_key

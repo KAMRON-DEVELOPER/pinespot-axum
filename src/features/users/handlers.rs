@@ -3,7 +3,7 @@ use crate::{
         models::{OAuthUser, User, UserRole, UserStatus},
         schemas::{
             AuthResponse, ContinueWithEmailSchema, GithubOAuthUser, GoogleOAuthUser, OAuthCallback,
-            OAuthUserSchema, PhoneResponse, RedirectResponse, Tokens,
+            OAuthUserSchema, PhoneResponse, RedirectResponse, Tokens, VerifyQuery,
         },
     },
     services::{database::Database, zepto::ZeptoMail},
@@ -381,37 +381,6 @@ pub async fn continue_with_email_handler(
 }
 
 // -- =====================
-// -- VERIFY
-// -- =====================
-pub async fn verify_handler(
-    State(config): State<Config>,
-    State(database): State<Database>,
-    Query(token): Query<String>,
-    // TypedHeader(_user_agent): TypedHeader<UserAgent>,
-    // ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-) -> Result<impl IntoResponse, AppError> {
-    let verification_token_claims = verify_token(&config, &token)?;
-
-    if verification_token_claims.typ != TokenType::EmailVerification {
-        return Err(AppError::InvalidTokenError);
-    }
-
-    let query_result = sqlx::query!(
-        "UPDATE users SET email_verified = TRUE WHERE id = $1",
-        verification_token_claims.sub
-    )
-    .execute(&database.pool)
-    .await?;
-
-    match query_result.rows_affected() {
-        0 => Err(AppError::QueryError(
-            "User couldn't set to verified".to_string(),
-        )),
-        _ => Ok(StatusCode::OK),
-    }
-}
-
-// -- =====================
 // -- COMPLETE PROFILE
 // -- =====================
 pub async fn complete_profile_handler(
@@ -528,7 +497,7 @@ pub async fn complete_profile_handler(
 
     if oauth_user_id_cookie.provider == Provider::Email {
         let token = create_token(&config, user.id, TokenType::EmailVerification)?;
-        let verification_link = format!("{}?{}", config.frontend_endpoint, token);
+        let verification_link = format!("{}/auth/verify?token={}", config.frontend_endpoint, token);
 
         let zepto = ZeptoMail::new();
         zepto
@@ -585,6 +554,41 @@ pub async fn complete_profile_handler(
     Ok((jar, response))
 }
 
+// -- =====================
+// -- VERIFY
+// -- =====================
+pub async fn verify_handler(
+    State(config): State<Config>,
+    State(database): State<Database>,
+    Query(verify_query): Query<VerifyQuery>,
+    // TypedHeader(_user_agent): TypedHeader<UserAgent>,
+    // ConnectInfo(_addr): ConnectInfo<SocketAddr>,
+) -> Result<impl IntoResponse, AppError> {
+    debug!("verify_query is '{}'", verify_query.token.clone());
+    let verification_token_claims = verify_token(&config, &verify_query.token)?;
+
+    if verification_token_claims.typ != TokenType::EmailVerification {
+        return Err(AppError::InvalidTokenError);
+    }
+
+    let query_result = sqlx::query!(
+        "UPDATE users SET email_verified = TRUE WHERE id = $1",
+        verification_token_claims.sub
+    )
+    .execute(&database.pool)
+    .await?;
+
+    match query_result.rows_affected() {
+        0 => Err(AppError::QueryError(
+            "User couldn't set to verified".to_string(),
+        )),
+        _ => Ok(StatusCode::OK),
+    }
+}
+
+// -- =====================
+// -- GET USER
+// -- =====================
 pub async fn get_user_handler(
     claims: Claims,
     State(database): State<Database>,

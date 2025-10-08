@@ -11,6 +11,10 @@ pub enum AppError {
     DatabaseParsingError,
     #[error("Database connection error")]
     DatabaseConnectionError,
+    #[error("Failed to fetch {resource} with ID {id}")]
+    DatabaseFetchError { resource: String, id: String },
+    #[error("Failed to delete {resource} with ID {id}")]
+    DatabaseDeleteError { resource: String, id: String },
     #[error("Sqlx error: {0}")]
     SqlxError(#[from] sqlx::Error),
     #[error("Query error")]
@@ -192,6 +196,14 @@ impl IntoResponse for AppError {
             Self::DatabaseConnectionError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Database connection error".to_string(),
+            ),
+            Self::DatabaseFetchError { resource, id } => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("Failed to fetch {resource} with ID {id}"),
+            ),
+            Self::DatabaseDeleteError { resource, id } => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("Failed to delete {resource} with ID {id}"),
             ),
             Self::SqlxError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::QueryError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),

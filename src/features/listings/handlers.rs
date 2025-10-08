@@ -1,16 +1,21 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 
 use axum_extra::extract::PrivateCookieJar;
+use object_store::gcp::GoogleCloudStorage;
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
     features::{
-        listings::{models::Listing, repository::get_all_listings, schemas::ListingResponse},
+        listings::{
+            repository::{create_listing, get_many_listings, get_one_listing},
+            schemas::ListingResponse,
+        },
         schemas::Pagination,
         users::schemas::RedirectResponse,
     },
@@ -33,7 +38,7 @@ pub async fn get_many_listings_handler(
 
     pagination.validate()?;
 
-    let listings = get_all_listings(&database.pool, &pagination).await?;
+    let listings = get_many_listings(&database.pool, &pagination).await?;
 
     let total = sqlx::query_scalar!(
         r#"
@@ -51,33 +56,45 @@ pub async fn get_one_listing_handler(
     State(database): State<Database>,
     Path(listing_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, AppError> {
-    let listing = sqlx::query_as!(
-        Listing,
-        r#"
-            SELECT * FROM listings where id = $1
-        "#,
-        listing_id
-    )
-    .fetch_one(&database.pool)
-    .await?;
+    let listing = get_one_listing(&database.pool, &listing_id).await?;
 
     Ok(Json(listing))
 }
 
+pub async fn create_listing_handler(
+    claims: Claims,
+    State(database): State<Database>,
+    State(gcs): State<GoogleCloudStorage>,
+    multipart: Multipart,
+) -> Result<impl IntoResponse, AppError> {
+    create_listing(claims.sub, &database.pool, gcs, multipart).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({"message": "Your listing created successfully!"})),
+    ))
+}
+
 pub async fn delete_listing_handler(
+    claims: Claims,
     Path(listing_id): Path<Uuid>,
     State(database): State<Database>,
-    claims: Claims,
 ) -> Result<impl IntoResponse, AppError> {
-    sqlx::query_scalar!(
-        r#"
-            DELETE FROM listings where owner_id = $1 AND id = $2
-        "#,
+    let query_result = sqlx::query!(
+        "DELETE FROM listings where owner_id = $1 AND id = $2",
         claims.sub,
         listing_id
     )
     .execute(&database.pool)
     .await?;
 
-    Ok(StatusCode::NO_CONTENT)
+    match query_result.rows_affected() {
+        0 => Err(AppError::DatabaseDeleteError {
+            resource: "Listing".to_string(),
+            id: listing_id.to_string(),
+        }),
+        _ => Ok((
+            StatusCode::NO_CONTENT,
+            Json(json!({"message": "Your listing created successfully!"})),
+        )),
+    }
 }

@@ -7,6 +7,60 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+// -- =====================
+// -- IN
+// -- =====================
+#[derive(Serialize, Deserialize, Default)]
+pub struct PictureIn {
+    pub url: Option<String>,
+    pub is_primary: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct AddressIn {
+    pub street_address: Option<String>,
+    pub city: Option<String>,
+    pub state_or_region: Option<String>,
+    pub county_or_district: Option<String>,
+    pub postal_code: Option<String>,
+    pub country: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct ApartmentIn {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub rooms: Option<i32>,
+    pub beds: Option<i32>,
+    pub baths: Option<i32>,
+    pub address: AddressIn,
+    pub amenities: Vec<String>,
+    pub pictures: Vec<PictureIn>,
+    pub area: Option<f64>,
+    pub floor: Option<i32>,
+    pub has_elevator: Option<bool>,
+    pub condition: Option<ApartmentCondition>,
+    pub sale_type: Option<SaleType>,
+    pub requirements: Option<String>,
+    pub has_garden: Option<bool>,
+    pub distance_to_kindergarten: Option<i32>,
+    pub distance_to_school: Option<i32>,
+    pub distance_to_hospital: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct ListingIn {
+    pub price: Option<BigDecimal>,
+    pub currency: Option<String>,
+    pub apartment: ApartmentIn,
+    pub tags: Vec<String>,
+}
+
+// -- =====================
+// -- OUT
+// -- =====================
 #[derive(Serialize, Deserialize)]
 pub struct AmenityOut {
     pub id: Uuid,

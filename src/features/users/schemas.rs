@@ -1,6 +1,7 @@
-use crate::features::users::models::User;
+use crate::features::users::models::{User, UserRole, UserStatus};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use validator::Validate;
 
 #[derive(Deserialize, Debug)]
@@ -50,7 +51,7 @@ pub struct ContinueWithEmailSchema {
     #[validate(length(
         min = 8,
         max = 32,
-        message = "Password should be long beetween 8 and 32"
+        message = "Password should be long between 8 and 32"
     ))]
     pub password: String,
 }
@@ -89,4 +90,20 @@ pub struct OAuthUserSchema {
     pub phone_number: Option<String>,
     pub password: Option<String>,
     pub picture: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UserOut {
+    pub id: Uuid,
+    pub full_name: String,
+    pub email: String,
+    pub phone_number: String,
+    pub picture: Option<String>,
+    pub role: UserRole,
+    pub status: UserStatus,
+    pub email_verified: bool,
+    pub oauth_user_id: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }

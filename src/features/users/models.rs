@@ -16,7 +16,7 @@ pub enum UserRole {
 pub enum UserStatus {
     #[default]
     Active,
-    Disactive,
+    Inactive,
 }
 
 #[derive(FromRow, Serialize, Deserialize, PartialEq, Eq, Default, Debug)]

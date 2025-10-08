@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     features::{
-        listings::{models::Listing, schemas::ListingResponse},
+        listings::{models::Listing, repository::get_all_listings, schemas::ListingResponse},
         schemas::Pagination,
         users::schemas::RedirectResponse,
     },
@@ -33,27 +33,15 @@ pub async fn get_many_listings_handler(
 
     pagination.validate()?;
 
-    let listings = sqlx::query_as!(
-        Listing,
-        r#"
-            SELECT * FROM listings
-            ORDER BY updated_at DESC
-            OFFSET $1 LIMIT $2
-        "#,
-        pagination.offset,
-        pagination.limit
-    )
-    .fetch_all(&database.pool)
-    .await?;
+    let listings = get_all_listings(&database.pool, &pagination).await?;
 
     let total = sqlx::query_scalar!(
         r#"
-            SELECT COUNT(*) from listings
+        SELECT COUNT(*) from listings
         "#
     )
     .fetch_one(&database.pool)
     .await?;
-
     let total = total.unwrap_or(0);
 
     Ok(Json(ListingResponse { listings, total }).into_response())

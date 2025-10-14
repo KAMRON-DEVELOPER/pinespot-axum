@@ -1,4 +1,4 @@
-use crate::utilities::errors::AppError;
+use crate::{features::listings::models::SaleType, utilities::errors::AppError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
@@ -22,14 +22,78 @@ pub enum Condition {
 
 #[derive(Deserialize, Serialize, Default, Debug)]
 #[serde(default, rename_all = "camelCase")]
-pub struct SeachParams {
-    pub min_beds: Option<i32>,
-    pub min_baths: Option<i32>,
-    pub max_price: Option<u64>,
-    pub sort: Option<Sort>,
-    pub condition: Option<Condition>,
+pub struct SearchParams {
+    // Basic filters
     pub q: Option<String>,
+    pub sort: Option<Sort>,
+    pub country: String,
+    pub max_price: Option<u64>,
+
+    // Property details
+    pub min_rooms: Option<i64>,
+    pub min_beds: Option<i64>,
+    pub min_baths: Option<i64>,
+    pub min_area: Option<i64>,
+
+    // Floor handling - clarified
+    pub apartment_floor: Option<i64>,
+    pub min_building_floors: Option<i64>,
+
+    pub has_elevator: Option<bool>,
+    pub condition: Option<Condition>,
+    pub sale_type: Option<SaleType>,
+    pub has_garden: Option<bool>,
+
+    // Distances (in km)
+    pub max_distance_to_kindergarten: Option<i64>,
+    pub max_distance_to_school: Option<i64>,
+    pub max_distance_to_hospital: Option<i64>,
+    pub max_distance_to_metro: Option<i64>,
+    pub max_distance_to_bus_stop: Option<i64>,
+    pub max_distance_to_shopping: Option<i64>,
 }
+
+// impl SearchParams {
+//     pub fn validate(&self) -> Result<(), AppError> {
+//         // Price validation
+//         if let (Some(min), Some(max)) = (self.min_price, self.max_price) {
+//             if min > max {
+//                 return Err(AppError::ValidationError(
+//                     "Minimum price cannot exceed maximum price".to_string(),
+//                 ));
+//             }
+//         }
+
+//         // Rooms validation
+//         if let (Some(min), Some(max)) = (self.min_rooms, self.max_rooms) {
+//             if min > max {
+//                 return Err(AppError::ValidationError(
+//                     "Minimum rooms cannot exceed maximum rooms".to_string(),
+//                 ));
+//             }
+//         }
+
+//         // Area validation
+//         if let (Some(min), Some(max)) = (self.min_area, self.max_area) {
+//             if min > max {
+//                 return Err(AppError::ValidationError(
+//                     "Minimum area cannot exceed maximum area".to_string(),
+//                 ));
+//             }
+//         }
+
+//         // Floor validation
+//         if let (Some(min), Some(max)) = (self.min_apartment_floor, self.max_apartment_floor) {
+//             if min > max {
+//                 return Err(AppError::ValidationError(
+//                     "Minimum floor cannot exceed maximum floor".to_string(),
+//                 ));
+//             }
+//         }
+
+//         Ok(())
+//     }
+// }
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Pagination {

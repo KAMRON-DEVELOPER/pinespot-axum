@@ -2,7 +2,7 @@ use crate::features::listings::models::{ApartmentCondition, SaleType};
 use crate::features::listings::schemas::{
     AddressOut, AmenityOut, ApartmentOut, ListingIn, ListingOut, PictureOut, TagOut,
 };
-use crate::features::schemas::{Condition, Pagination, SeachParams, Sort};
+use crate::features::schemas::{Condition, Pagination, SearchParams, Sort};
 use crate::features::users::models::{UserRole, UserStatus};
 use crate::features::users::schemas::UserOut;
 use crate::utilities::errors::AppError;
@@ -44,14 +44,25 @@ pub struct ListingJoined {
     pub apartment_baths: Option<i32>,
     pub apartment_area: Option<f64>,
     pub apartment_floor: Option<i32>,
-    pub apartment_has_elevator: Option<bool>,
+    pub apartment_total_building_floors: Option<i32>,
     pub apartment_condition: Option<ApartmentCondition>,
     pub apartment_sale_type: Option<SaleType>,
     pub apartment_requirements: Option<String>,
+    pub apartment_furnished: Option<bool>,
+    pub apartment_pets_allowed: Option<bool>,
+    pub apartment_has_elevator: Option<bool>,
     pub apartment_has_garden: Option<bool>,
+    pub apartment_has_parking: Option<bool>,
+    pub apartment_has_balcony: Option<bool>,
+    pub apartment_has_ac: Option<bool>,
+    pub apartment_has_heating: Option<bool>,
     pub distance_to_kindergarten: Option<i32>,
     pub distance_to_school: Option<i32>,
     pub distance_to_hospital: Option<i32>,
+    pub distance_to_metro: Option<i32>,
+    pub distance_to_bus_stop: Option<i32>,
+    pub distance_to_shopping: Option<i32>,
+
     pub apartment_created_at: Option<DateTime<Utc>>,
     pub apartment_updated_at: Option<DateTime<Utc>>,
 
@@ -77,7 +88,7 @@ pub struct ListingJoined {
 pub async fn get_many_listings(
     pool: &PgPool,
     pagination: &Pagination,
-    search_params: &SeachParams,
+    search_params: &SearchParams,
 ) -> Result<(Vec<ListingOut>, i64), sqlx::Error> {
     let select_base = r#"
         SELECT
@@ -107,7 +118,8 @@ pub async fn get_many_listings(
             a.beds AS apartment_beds,
             a.baths AS apartment_baths,
             a.area AS apartment_area,
-            a.floor AS apartment_floor,
+            a.apartment_floor AS apartment_floor,
+            a.total_building_floors AS apartment_total_building_floors,
             a.has_elevator AS apartment_has_elevator,
             a.condition AS "apartment_condition: ApartmentCondition",
             a.sale_type AS "apartment_sale_type: SaleType",
@@ -167,100 +179,7 @@ pub async fn get_many_listings(
             ) AS "pictures: Json<Vec<PictureOut>>"
         "#;
 
-    let mut select_qb = QueryBuilder::new(select_base);
-    select_qb.push(
-        r#"
-        FROM listings l
-        JOIN users u ON u.id = l.owner_id
-        JOIN apartments a ON a.id = l.apartment_id
-        LEFT JOIN addresses ad ON ad.apartment_id = a.id
-        WHERE 1=1
-        "#,
-    );
-
-    if let Some(min_beds) = search_params.min_beds
-        && min_beds > 0
-    {
-        select_qb.push(" AND a.beds >= ").push_bind(min_beds);
-    }
-
-    if let Some(min_baths) = search_params.min_baths
-        && min_baths > 0
-    {
-        select_qb.push(" AND a.baths >= ").push_bind(min_baths);
-    }
-
-    if let Some(max_price) = search_params.max_price
-        && max_price > 0
-    {
-        select_qb
-            .push(" AND l.price <= ")
-            .push_bind(max_price.to_string())
-            .push("::numeric");
-    }
-
-    if let Some(condition) = &search_params.condition {
-        match condition {
-            Condition::Any => {}
-            Condition::Old => {
-                select_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("old")
-                    .push("::apartment_condition");
-            }
-            Condition::Repaired => {
-                select_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("repaired")
-                    .push("::apartment_condition");
-            }
-            Condition::New => {
-                select_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("new")
-                    .push("::apartment_condition");
-            }
-        }
-    }
-
-    if let Some(q) = &search_params.q {
-        if !q.trim().is_empty() {
-            let like = format!("%{}%", q.trim());
-            select_qb
-                .push(" AND (a.title ILIKE ")
-                .push_bind(like.clone());
-            select_qb
-                .push(" OR a.description ILIKE ")
-                .push_bind(like.clone());
-            select_qb.push(" OR ad.city ILIKE ").push_bind(like.clone());
-            select_qb
-                .push(" OR ad.street_address ILIKE ")
-                .push_bind(like);
-            select_qb.push(")");
-        }
-    }
-
-    // GROUP BY clause required for the aggregates
-    select_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
-
-    // Sorting
-    if let Some(sort) = &search_params.sort {
-        match sort {
-            Sort::Newest => select_qb.push(" ORDER BY l.created_at DESC "),
-            Sort::Cheap => select_qb.push(" ORDER BY l.price ASC "),
-            Sort::Expensive => select_qb.push(" ORDER BY l.price DESC "),
-        };
-    }
-
-    select_qb.push(" OFFSET ").push_bind(pagination.offset);
-    select_qb.push(" LIMIT ").push_bind(pagination.limit);
-
-    // Execute select
-    let rows: Vec<ListingJoined> = select_qb
-        .build_query_as::<ListingJoined>()
-        .fetch_all(pool)
-        .await?;
-
+    let mut listing_qb = QueryBuilder::new(select_base);
     let mut count_qb = QueryBuilder::new(
         r#"
         SELECT COUNT(*)
@@ -272,54 +191,36 @@ pub async fn get_many_listings(
         "#,
     );
 
-    if let Some(min_beds) = search_params.min_beds
-        && min_beds > 0
-    {
-        count_qb.push(" AND a.beds >= ").push_bind(min_beds);
-    }
+    listing_qb.push(
+        r#"
+        FROM listings l
+        JOIN users u ON u.id = l.owner_id
+        JOIN apartments a ON a.id = l.apartment_id
+        LEFT JOIN addresses ad ON ad.apartment_id = a.id
+        WHERE 1=1
+        "#,
+    );
 
-    if let Some(min_baths) = search_params.min_baths
-        && min_baths > 0
-    {
-        count_qb.push(" AND a.baths >= ").push_bind(min_baths);
-    }
-
-    if let Some(max_price) = search_params.max_price
-        && max_price > 0
-    {
-        count_qb
-            .push(" AND l.price <= ")
-            .push_bind(max_price.to_string())
-            .push("::numeric");
-    }
-
-    if let Some(condition) = &search_params.condition {
-        match condition {
-            Condition::Any => {}
-            Condition::Old => {
-                count_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("old")
-                    .push("::apartment_condition");
-            }
-            Condition::Repaired => {
-                count_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("repaired")
-                    .push("::apartment_condition");
-            }
-            Condition::New => {
-                count_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("new")
-                    .push("::apartment_condition");
-            }
-        }
-    }
+    // GROUP BY clause required for the aggregates
+    listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
 
     if let Some(q) = &search_params.q {
         if !q.trim().is_empty() {
             let like = format!("%{}%", q.trim());
+            listing_qb
+                .push(" AND (a.title ILIKE ")
+                .push_bind(like.clone());
+            listing_qb
+                .push(" OR a.description ILIKE ")
+                .push_bind(like.clone());
+            listing_qb
+                .push(" OR ad.city ILIKE ")
+                .push_bind(like.clone());
+            listing_qb
+                .push(" OR ad.street_address ILIKE ")
+                .push_bind(like.clone());
+            listing_qb.push(")");
+
             count_qb
                 .push(" AND (a.title ILIKE ")
                 .push_bind(like.clone());
@@ -334,7 +235,109 @@ pub async fn get_many_listings(
         }
     }
 
+    if let Some(sort) = &search_params.sort {
+        match sort {
+            Sort::Newest => listing_qb.push(" ORDER BY l.created_at DESC "),
+            Sort::Cheap => listing_qb.push(" ORDER BY l.price ASC "),
+            Sort::Expensive => listing_qb.push(" ORDER BY l.price DESC "),
+        };
+    }
+
+    if !search_params.country.trim().is_empty() {
+        listing_qb
+            .push(" AND ad.country = ")
+            .push_bind(search_params.country.clone());
+        count_qb
+            .push(" AND ad.country = ")
+            .push_bind(search_params.country.clone());
+    }
+
+    if let Some(max_price) = search_params.max_price
+        && max_price > 0
+    {
+        listing_qb
+            .push(" AND l.price <= ")
+            .push_bind(max_price.to_string())
+            .push("::numeric");
+        count_qb
+            .push(" AND l.price <= ")
+            .push_bind(max_price.to_string())
+            .push("::numeric");
+    }
+
+    if let Some(min_rooms) = search_params.min_rooms
+        && min_rooms > 0
+    {
+        listing_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
+        count_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
+    }
+
+    if let Some(min_beds) = search_params.min_beds
+        && min_beds > 0
+    {
+        listing_qb.push(" AND a.beds >= ").push_bind(min_beds);
+        count_qb.push(" AND a.beds >= ").push_bind(min_beds);
+    }
+
+    if let Some(min_baths) = search_params.min_baths
+        && min_baths > 0
+    {
+        listing_qb.push(" AND a.baths >= ").push_bind(min_baths);
+        count_qb.push(" AND a.baths >= ").push_bind(min_baths);
+    }
+
+    if let Some(min_area) = search_params.min_area
+        && min_area > 0
+    {
+        listing_qb.push(" AND a.area >= ").push_bind(min_area);
+        count_qb.push(" AND a.area >= ").push_bind(min_area);
+    }
+
+    if let Some(condition) = &search_params.condition {
+        match condition {
+            Condition::Any => {}
+            Condition::Old => {
+                listing_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("old")
+                    .push("::apartment_condition");
+                count_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("old")
+                    .push("::apartment_condition");
+            }
+            Condition::Repaired => {
+                listing_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("repaired")
+                    .push("::apartment_condition");
+                count_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("repaired")
+                    .push("::apartment_condition");
+            }
+            Condition::New => {
+                listing_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("new")
+                    .push("::apartment_condition");
+                count_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("new")
+                    .push("::apartment_condition");
+            }
+        }
+    }
+
+    listing_qb.push(" OFFSET ").push_bind(pagination.offset);
+    listing_qb.push(" LIMIT ").push_bind(pagination.limit);
+
     let total = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
+
+    let rows: Vec<ListingJoined> = listing_qb
+        .build_query_as::<ListingJoined>()
+        .fetch_all(pool)
+        .await?;
 
     let listings = rows
         .into_iter()
@@ -380,15 +383,25 @@ pub async fn get_many_listings(
                 pictures: row.pictures.map(|p| p.0).unwrap_or_default(),
                 amenities: row.amenities.map(|a| a.0).unwrap_or_default(),
                 area: row.apartment_area,
-                floor: row.apartment_floor,
-                has_elevator: row.apartment_has_elevator,
+                apartment_floor: row.apartment_floor,
+                total_building_floors: row.apartment_total_building_floors,
                 condition: row.apartment_condition,
                 sale_type: row.apartment_sale_type,
                 requirements: row.apartment_requirements,
+                furnished: row.apartment_furnished,
+                pets_allowed: row.apartment_pets_allowed,
+                has_elevator: row.apartment_has_elevator,
                 has_garden: row.apartment_has_garden,
+                has_parking: row.apartment_has_parking,
+                has_balcony: row.apartment_has_balcony,
+                has_ac: row.apartment_has_ac,
+                has_heating: row.apartment_has_heating,
                 distance_to_kindergarten: row.distance_to_kindergarten,
                 distance_to_school: row.distance_to_school,
                 distance_to_hospital: row.distance_to_hospital,
+                distance_to_metro: row.distance_to_metro,
+                distance_to_bus_stop: row.distance_to_bus_stop,
+                distance_to_shopping: row.distance_to_shopping,
                 created_at: row.apartment_created_at,
                 updated_at: row.apartment_updated_at,
             },
@@ -439,15 +452,25 @@ pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<Listing
             a.beds AS apartment_beds,
             a.baths AS apartment_baths,
             a.area AS apartment_area,
-            a.floor AS apartment_floor,
-            a.has_elevator AS apartment_has_elevator,
+            a.apartment_floor AS apartment_floor,
+            a.total_building_floors AS apartment_total_building_floors,
             a.condition AS "apartment_condition: ApartmentCondition",
             a.sale_type AS "apartment_sale_type: SaleType",
             a.requirements AS apartment_requirements,
+            a.furnished AS apartment_furnished,
+            a.pets_allowed AS apartment_pets_allowed,
+            a.has_elevator AS apartment_has_elevator,
             a.has_garden AS apartment_has_garden,
+            a.has_parking AS apartment_has_parking,
+            a.has_balcony AS apartment_has_balcony,
+            a.has_ac AS apartment_has_ac,
+            a.has_heating AS apartment_has_heating,
             a.distance_to_kindergarten,
             a.distance_to_school,
             a.distance_to_hospital,
+            a.distance_to_metro,
+            a.distance_to_bus_stop,
+            a.distance_to_shopping,
             a.created_at AS apartment_created_at,
             a.updated_at AS apartment_updated_at,
 
@@ -557,15 +580,25 @@ pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<Listing
             pictures: row.pictures.map(|p| p.0).unwrap_or_default(),
             amenities: row.amenities.map(|a| a.0).unwrap_or_default(),
             area: row.apartment_area,
-            floor: row.apartment_floor,
-            has_elevator: row.apartment_has_elevator,
+            apartment_floor: row.apartment_floor,
+            total_building_floors: row.apartment_total_building_floors,
             condition: row.apartment_condition,
             sale_type: row.apartment_sale_type,
             requirements: row.apartment_requirements,
+            furnished: row.apartment_furnished,
+            pets_allowed: row.apartment_pets_allowed,
+            has_elevator: row.apartment_has_elevator,
             has_garden: row.apartment_has_garden,
+            has_parking: row.apartment_has_parking,
+            has_balcony: row.apartment_has_balcony,
+            has_ac: row.apartment_has_ac,
+            has_heating: row.apartment_has_heating,
             distance_to_kindergarten: row.distance_to_kindergarten,
             distance_to_school: row.distance_to_school,
             distance_to_hospital: row.distance_to_hospital,
+            distance_to_metro: row.distance_to_metro,
+            distance_to_bus_stop: row.distance_to_bus_stop,
+            distance_to_shopping: row.distance_to_shopping,
             created_at: row.apartment_created_at,
             updated_at: row.apartment_updated_at,
         },
@@ -607,10 +640,10 @@ pub async fn create_listing(
     let apartment_id = Uuid::new_v4();
     sqlx::query!(
         r#"
-        INSERT INTO apartments (id, title, description, rooms, beds, baths, area, floor, 
+        INSERT INTO apartments (id, title, description, rooms, beds, baths, area, apartment_floor, total_building_floors, 
             has_elevator, condition, sale_type, requirements, has_garden, 
             distance_to_kindergarten, distance_to_school, distance_to_hospital)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, $17)
         "#,
         apartment_id,
         listing_in.apartment.title,
@@ -619,7 +652,8 @@ pub async fn create_listing(
         listing_in.apartment.beds,
         listing_in.apartment.baths,
         listing_in.apartment.area,
-        listing_in.apartment.floor,
+        listing_in.apartment.apartment_floor,
+        listing_in.apartment.total_building_floors,
         listing_in.apartment.has_elevator,
         listing_in.apartment.condition as _,
         listing_in.apartment.sale_type as _,

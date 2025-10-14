@@ -16,7 +16,7 @@ use crate::{
             repository::{create_listing, get_many_listings, get_one_listing},
             schemas::ListingResponse,
         },
-        schemas::{Pagination, SeachParams},
+        schemas::{Pagination, SearchParams},
         users::schemas::RedirectResponse,
     },
     services::database::Database,
@@ -60,7 +60,7 @@ pub async fn get_many_listings_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,
     Query(pagination): Query<Pagination>,
-    Query(search_params): Query<SeachParams>,
+    Query(search_params): Query<SearchParams>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
 ) -> Result<Response, AppError> {
     if optional_oauth_user_id_cookie.is_some() {

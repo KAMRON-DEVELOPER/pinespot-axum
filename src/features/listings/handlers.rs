@@ -23,6 +23,39 @@ use crate::{
     utilities::{cookie::OptionalOAuthUserIdCookie, errors::AppError, jwt::Claims},
 };
 
+pub async fn get_stats_handler(
+    jar: PrivateCookieJar,
+    State(database): State<Database>,
+    OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
+) -> Result<Response, AppError> {
+    if optional_oauth_user_id_cookie.is_some() {
+        let response = Json(RedirectResponse {
+            redirect_to: "complete-profile".to_string(),
+        });
+        return Ok((jar, response).into_response());
+    }
+
+    let total_users = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) from users
+        "#
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    let total_users = total_users.unwrap_or(0);
+
+    let total_listings = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) from listings
+        "#
+    )
+    .fetch_one(&database.pool)
+    .await?;
+    let total_listings = total_listings.unwrap_or(0);
+
+    Ok(Json(json!({"totalUsers": total_users, "totalListings": total_listings})).into_response())
+}
+
 pub async fn get_many_listings_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,

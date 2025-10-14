@@ -136,3 +136,11 @@ impl Pagination {
         Ok(())
     }
 }
+
+#[derive(Deserialize, Debug)]
+pub struct ListingQuery {
+    #[serde(flatten)]
+    pub pagination: Pagination,
+    #[serde(flatten)]
+    pub search_params: SearchParams,
+}

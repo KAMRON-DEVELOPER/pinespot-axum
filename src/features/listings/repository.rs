@@ -2,7 +2,7 @@ use crate::features::listings::models::{ApartmentCondition, SaleType};
 use crate::features::listings::schemas::{
     AddressOut, AmenityOut, ApartmentOut, ListingIn, ListingOut, PictureOut, TagOut,
 };
-use crate::features::schemas::{Condition, Pagination, SearchParams, Sort};
+use crate::features::schemas::{Condition, ListingQuery, Sort};
 use crate::features::users::models::{UserRole, UserStatus};
 use crate::features::users::schemas::UserOut;
 use crate::utilities::errors::AppError;
@@ -87,9 +87,13 @@ pub struct ListingJoined {
 
 pub async fn get_many_listings(
     pool: &PgPool,
-    pagination: &Pagination,
-    search_params: &SearchParams,
+    listing_query: &ListingQuery,
 ) -> Result<(Vec<ListingOut>, i64), sqlx::Error> {
+    let ListingQuery {
+        pagination,
+        search_params,
+    } = listing_query;
+
     let select_base = r#"
         SELECT
             l.id AS listing_id,

@@ -2,7 +2,7 @@ use crate::features::listings::models::{ApartmentCondition, SaleType};
 use crate::features::listings::schemas::{
     AddressOut, AmenityOut, ApartmentOut, ListingIn, ListingOut, PictureOut, TagOut,
 };
-use crate::features::schemas::Pagination;
+use crate::features::schemas::{Condition, Pagination, SeachParams, Sort};
 use crate::features::users::models::{UserRole, UserStatus};
 use crate::features::users::schemas::UserOut;
 use crate::utilities::errors::AppError;
@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use object_store::gcp::GoogleCloudStorage;
 use object_store::{ObjectStore, path::Path as ObjectStorePath};
 
+use sqlx::QueryBuilder;
 use sqlx::{FromRow, PgPool, types::BigDecimal, types::Json};
 use uuid::Uuid;
 
@@ -77,10 +78,10 @@ pub struct ListingJoined {
 pub async fn get_many_listings(
     pool: &PgPool,
     pagination: &Pagination,
-) -> Result<Vec<ListingOut>, sqlx::Error> {
-    let rows = sqlx::query_as!(
-        ListingJoined,
-        r#"
+    search_params: &SeachParams,
+) -> Result<(Vec<ListingOut>, i64), sqlx::Error> {
+    // Base SELECT
+    let select_base = r#"
         SELECT
             l.id AS listing_id,
             l.price,
@@ -97,7 +98,7 @@ pub async fn get_many_listings(
             u.role AS "owner_role: UserRole",
             u.status AS "owner_status: UserStatus",
             u.email_verified AS owner_email_verified,
-            u.oauth_user_id AS owner_oauth_user_id,
+            u.oauth_user_id AS owner_oauth_user_id",
             u.created_at AS owner_created_at,
             u.updated_at AS owner_updated_at,
 
@@ -167,22 +168,185 @@ pub async fn get_many_listings(
                 )) FROM apartment_pictures ap WHERE ap.apartment_id = a.id),
                 '[]'::jsonb
             ) AS "pictures: Json<Vec<PictureOut>>"
+        "#;
 
+    // Build SELECT query with dynamic WHERE clauses
+    let mut select_qb = QueryBuilder::new(select_base);
+    select_qb.push(
+        r#"
         FROM listings l
         JOIN users u ON u.id = l.owner_id
         JOIN apartments a ON a.id = l.apartment_id
         LEFT JOIN addresses ad ON ad.apartment_id = a.id
-        GROUP BY
-            l.id, u.id, a.id, ad.id
-        ORDER BY l.created_at DESC
-        OFFSET $1 LIMIT $2
+        WHERE 1=1
         "#,
-        pagination.offset,
-        pagination.limit
-    )
-    .fetch_all(pool)
-    .await?;
+    );
 
+    // Apply filters
+    if let Some(min_beds) = search_params.min_beds
+        && min_beds > 0
+    {
+        // a.beds is integer in DB; bind as i32
+        select_qb.push(" AND a.beds >= ").push_bind(min_beds);
+    }
+
+    if let Some(min_baths) = search_params.min_baths
+        && min_baths > 0
+    {
+        select_qb.push(" AND a.baths >= ").push_bind(min_baths);
+    }
+
+    if let Some(max_price) = search_params.max_price
+        && max_price > 0
+    {
+        // bind numeric as string and cast to numeric in SQL to compare with numeric column
+        select_qb
+            .push(" AND l.price <= ")
+            .push_bind(max_price.to_string())
+            .push("::numeric");
+    }
+
+    if let Some(condition) = &search_params.condition {
+        match condition {
+            Condition::Any => {}
+            Condition::Old => {
+                select_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("old")
+                    .push("::apartment_condition");
+            }
+            Condition::Repaired => {
+                select_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("repaired")
+                    .push("::apartment_condition");
+            }
+            Condition::New => {
+                select_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("new")
+                    .push("::apartment_condition");
+            }
+        }
+    }
+
+    // Full-text-ish q search (ILIKE on title, description, city, street_address)
+    if let Some(q) = &search_params.q {
+        if !q.trim().is_empty() {
+            let like = format!("%{}%", q.trim());
+            select_qb
+                .push(" AND (a.title ILIKE ")
+                .push_bind(like.clone());
+            select_qb
+                .push(" OR a.description ILIKE ")
+                .push_bind(like.clone());
+            select_qb.push(" OR ad.city ILIKE ").push_bind(like.clone());
+            select_qb
+                .push(" OR ad.street_address ILIKE ")
+                .push_bind(like);
+            select_qb.push(")");
+        }
+    }
+
+    // GROUP BY clause required for the aggregates
+    select_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
+
+    // Sorting
+    if let Some(sort) = &search_params.sort {
+        match sort {
+            Sort::Newest => select_qb.push(" ORDER BY l.created_at DESC "),
+            Sort::Cheap => select_qb.push(" ORDER BY l.price ASC "),
+            Sort::Expensive => select_qb.push(" ORDER BY l.price DESC "),
+        };
+    }
+
+    // Offset & Limit
+    select_qb.push(" OFFSET ").push_bind(pagination.offset);
+    select_qb.push(" LIMIT ").push_bind(pagination.limit);
+
+    // Execute select
+    let rows: Vec<ListingJoined> = select_qb
+        .build_query_as::<ListingJoined>()
+        .fetch_all(pool)
+        .await?;
+
+    // Count query with same filters
+    let mut count_qb = QueryBuilder::new(
+        r#"
+        SELECT COUNT(*) 
+        FROM listings l
+        JOIN users u ON u.id = l.owner_id
+        JOIN apartments a ON a.id = l.apartment_id
+        LEFT JOIN addresses ad ON ad.apartment_id = a.id
+        WHERE 1=1
+        "#,
+    );
+
+    if let Some(min_beds) = search_params.min_beds
+        && min_beds > 0
+    {
+        count_qb.push(" AND a.beds >= ").push_bind(min_beds);
+    }
+
+    if let Some(min_baths) = search_params.min_baths
+        && min_baths > 0
+    {
+        count_qb.push(" AND a.baths >= ").push_bind(min_baths);
+    }
+
+    if let Some(max_price) = search_params.max_price
+        && max_price > 0
+    {
+        count_qb
+            .push(" AND l.price <= ")
+            .push_bind(max_price.to_string())
+            .push("::numeric");
+    }
+
+    if let Some(condition) = &search_params.condition {
+        match condition {
+            Condition::Any => {}
+            Condition::Old => {
+                count_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("old")
+                    .push("::apartment_condition");
+            }
+            Condition::Repaired => {
+                count_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("repaired")
+                    .push("::apartment_condition");
+            }
+            Condition::New => {
+                count_qb
+                    .push(" AND a.condition = ")
+                    .push_bind("new")
+                    .push("::apartment_condition");
+            }
+        }
+    }
+
+    if let Some(q) = &search_params.q {
+        if !q.trim().is_empty() {
+            let like = format!("%{}%", q.trim());
+            count_qb
+                .push(" AND (a.title ILIKE ")
+                .push_bind(like.clone());
+            count_qb
+                .push(" OR a.description ILIKE ")
+                .push_bind(like.clone());
+            count_qb.push(" OR ad.city ILIKE ").push_bind(like.clone());
+            count_qb
+                .push(" OR ad.street_address ILIKE ")
+                .push_bind(like);
+            count_qb.push(")");
+        }
+    }
+
+    let total = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
+
+    // Map rows into ListingOut
     let listings = rows
         .into_iter()
         .map(|row| ListingOut {
@@ -244,7 +408,7 @@ pub async fn get_many_listings(
         })
         .collect();
 
-    Ok(listings)
+    Ok((listings, total))
 }
 
 pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<ListingOut, AppError> {

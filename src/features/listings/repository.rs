@@ -19,7 +19,6 @@ use uuid::Uuid;
 pub struct ListingJoined {
     pub listing_id: Uuid,
     pub price: BigDecimal,
-    pub currency: String,
     pub listing_created_at: DateTime<Utc>,
     pub listing_updated_at: DateTime<Utc>,
 
@@ -80,12 +79,10 @@ pub async fn get_many_listings(
     pagination: &Pagination,
     search_params: &SeachParams,
 ) -> Result<(Vec<ListingOut>, i64), sqlx::Error> {
-    // Base SELECT
     let select_base = r#"
         SELECT
             l.id AS listing_id,
             l.price,
-            l.currency,
             l.created_at AS listing_created_at,
             l.updated_at AS listing_updated_at,
 
@@ -170,7 +167,6 @@ pub async fn get_many_listings(
             ) AS "pictures: Json<Vec<PictureOut>>"
         "#;
 
-    // Build SELECT query with dynamic WHERE clauses
     let mut select_qb = QueryBuilder::new(select_base);
     select_qb.push(
         r#"
@@ -182,11 +178,9 @@ pub async fn get_many_listings(
         "#,
     );
 
-    // Apply filters
     if let Some(min_beds) = search_params.min_beds
         && min_beds > 0
     {
-        // a.beds is integer in DB; bind as i32
         select_qb.push(" AND a.beds >= ").push_bind(min_beds);
     }
 
@@ -199,7 +193,6 @@ pub async fn get_many_listings(
     if let Some(max_price) = search_params.max_price
         && max_price > 0
     {
-        // bind numeric as string and cast to numeric in SQL to compare with numeric column
         select_qb
             .push(" AND l.price <= ")
             .push_bind(max_price.to_string())
@@ -230,7 +223,6 @@ pub async fn get_many_listings(
         }
     }
 
-    // Full-text-ish q search (ILIKE on title, description, city, street_address)
     if let Some(q) = &search_params.q {
         if !q.trim().is_empty() {
             let like = format!("%{}%", q.trim());
@@ -260,7 +252,6 @@ pub async fn get_many_listings(
         };
     }
 
-    // Offset & Limit
     select_qb.push(" OFFSET ").push_bind(pagination.offset);
     select_qb.push(" LIMIT ").push_bind(pagination.limit);
 
@@ -270,10 +261,9 @@ pub async fn get_many_listings(
         .fetch_all(pool)
         .await?;
 
-    // Count query with same filters
     let mut count_qb = QueryBuilder::new(
         r#"
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM listings l
         JOIN users u ON u.id = l.owner_id
         JOIN apartments a ON a.id = l.apartment_id
@@ -346,13 +336,11 @@ pub async fn get_many_listings(
 
     let total = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
-    // Map rows into ListingOut
     let listings = rows
         .into_iter()
         .map(|row| ListingOut {
             id: row.listing_id,
             price: row.price,
-            currency: row.currency,
             created_at: row.listing_created_at,
             updated_at: row.listing_updated_at,
             owner: UserOut {
@@ -408,6 +396,15 @@ pub async fn get_many_listings(
         })
         .collect();
 
+    // https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR
+    // {
+    //   "base": "USD",
+    //   "date": "2025-10-13",
+    //   "rates": {
+    //     "EUR": 0.9304
+    //   }
+    // }
+
     Ok((listings, total))
 }
 
@@ -418,7 +415,6 @@ pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<Listing
         SELECT
             l.id AS listing_id,
             l.price,
-            l.currency,
             l.created_at AS listing_created_at,
             l.updated_at AS listing_updated_at,
 
@@ -522,7 +518,6 @@ pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<Listing
     let listing = ListingOut {
         id: row.listing_id,
         price: row.price,
-        currency: row.currency,
         created_at: row.listing_created_at,
         updated_at: row.listing_updated_at,
         owner: UserOut {
@@ -682,12 +677,11 @@ pub async fn create_listing(
     // Create listing
     let listing_id = Uuid::new_v4();
     sqlx::query!(
-        "INSERT INTO listings (id, apartment_id, owner_id, price, currency) VALUES ($1, $2, $3, $4, $5)",
+        "INSERT INTO listings (id, apartment_id, owner_id, price) VALUES ($1, $2, $3, $4)",
         listing_id,
         apartment_id,
         owner_id,
         listing_in.price,
-        listing_in.currency
     )
     .execute(&mut *tx)
     .await?;

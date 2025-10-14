@@ -30,7 +30,6 @@ pub struct Listing {
     pub apartment_id: Uuid,
     pub owner_id: Uuid,
     pub price: BigDecimal,
-    pub currency: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

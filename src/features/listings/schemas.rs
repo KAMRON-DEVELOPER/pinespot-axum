@@ -53,7 +53,6 @@ pub struct ApartmentIn {
 #[derive(Serialize, Deserialize, Default)]
 pub struct ListingIn {
     pub price: Option<BigDecimal>,
-    pub currency: Option<String>,
     pub apartment: ApartmentIn,
     pub tags: Vec<String>,
 }
@@ -120,7 +119,6 @@ pub struct ListingOut {
     pub owner: UserOut,
     pub apartment: ApartmentOut,
     pub price: BigDecimal,
-    pub currency: String,
     pub tags: Vec<TagOut>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

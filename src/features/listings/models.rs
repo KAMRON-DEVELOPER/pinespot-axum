@@ -5,8 +5,8 @@ use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
 #[derive(Type, Deserialize, Serialize, PartialEq, Eq, Default, Debug)]
-#[sqlx(type_name = "apartment_condition", rename_all = "lowercase")]
-#[sqlx(default)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(default, type_name = "apartment_condition", rename_all = "lowercase")]
 pub enum ApartmentCondition {
     #[default]
     New,
@@ -15,8 +15,8 @@ pub enum ApartmentCondition {
 }
 
 #[derive(Type, Deserialize, Serialize, PartialEq, Eq, Default, Debug)]
-#[sqlx(type_name = "sale_type", rename_all = "lowercase")]
-#[sqlx(default)]
+#[serde(rename_all = "camelCase")]
+#[sqlx(default, type_name = "sale_type", rename_all = "lowercase")]
 pub enum SaleType {
     #[default]
     Buy,

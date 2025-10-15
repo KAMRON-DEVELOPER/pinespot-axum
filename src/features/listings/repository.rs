@@ -2,7 +2,7 @@ use crate::features::listings::models::{ApartmentCondition, SaleType};
 use crate::features::listings::schemas::{
     AddressOut, AmenityOut, ApartmentOut, ListingIn, ListingOut, PictureOut, TagOut,
 };
-use crate::features::schemas::{Condition, ListingQuery, Sort};
+use crate::features::schemas::{ListingQuery, Sort};
 use crate::features::users::models::{UserRole, UserStatus};
 use crate::features::users::schemas::UserOut;
 use crate::utilities::errors::AppError;
@@ -95,93 +95,93 @@ pub async fn get_many_listings(
     } = listing_query;
 
     let select_base = r#"
-        SELECT
-            l.id AS listing_id,
-            l.price,
-            l.created_at AS listing_created_at,
-            l.updated_at AS listing_updated_at,
+    SELECT
+        l.id AS listing_id,
+        l.price,
+        l.created_at AS listing_created_at,
+        l.updated_at AS listing_updated_at,
 
-            -- owner fields ...
-            u.id AS owner_id,
-            u.full_name AS owner_full_name,
-            u.email AS owner_email,
-            u.phone_number AS owner_phone,
-            u.picture AS owner_picture,
-            u.role AS "owner_role: UserRole",
-            u.status AS "owner_status: UserStatus",
-            u.email_verified AS owner_email_verified,
-            u.oauth_user_id AS owner_oauth_user_id",
-            u.created_at AS owner_created_at,
-            u.updated_at AS owner_updated_at,
+        -- owner fields ...
+        u.id AS owner_id,
+        u.full_name AS owner_full_name,
+        u.email AS owner_email,
+        u.phone_number AS owner_phone,
+        u.picture AS owner_picture,
+        u.role AS "owner_role: UserRole",
+        u.status AS "owner_status: UserStatus",
+        u.email_verified AS owner_email_verified,
+        u.oauth_user_id AS owner_oauth_user_id,
+        u.created_at AS owner_created_at,
+        u.updated_at AS owner_updated_at,
 
-            -- apartment fields ...
-            a.id AS apartment_id,
-            a.title AS apartment_title,
-            a.description AS apartment_description,
-            a.rooms AS apartment_rooms,
-            a.beds AS apartment_beds,
-            a.baths AS apartment_baths,
-            a.area AS apartment_area,
-            a.apartment_floor AS apartment_floor,
-            a.total_building_floors AS apartment_total_building_floors,
-            a.has_elevator AS apartment_has_elevator,
-            a.condition AS "apartment_condition: ApartmentCondition",
-            a.sale_type AS "apartment_sale_type: SaleType",
-            a.requirements AS apartment_requirements,
-            a.has_garden AS apartment_has_garden,
-            a.distance_to_kindergarten,
-            a.distance_to_school,
-            a.distance_to_hospital,
-            a.created_at AS apartment_created_at,
-            a.updated_at AS apartment_updated_at,
+        -- apartment fields ...
+        a.id AS apartment_id,
+        a.title AS apartment_title,
+        a.description AS apartment_description,
+        a.rooms AS apartment_rooms,
+        a.beds AS apartment_beds,
+        a.baths AS apartment_baths,
+        a.area AS apartment_area,
+        a.apartment_floor AS apartment_floor,
+        a.total_building_floors AS apartment_total_building_floors,
+        a.has_elevator AS apartment_has_elevator,
+        a.condition AS "apartment_condition: ApartmentCondition",
+        a.sale_type AS "apartment_sale_type: SaleType",
+        a.requirements AS apartment_requirements,
+        a.has_garden AS apartment_has_garden,
+        a.distance_to_kindergarten,
+        a.distance_to_school,
+        a.distance_to_hospital,
+        a.created_at AS apartment_created_at,
+        a.updated_at AS apartment_updated_at,
 
-            -- address fields ...
-            ad.id AS address_id,
-            ad.street_address,
-            ad.city,
-            ad.state_or_region,
-            ad.county_or_district,
-            ad.postal_code,
-            ad.country,
-            ad.latitude,
-            ad.longitude,
-            ad.created_at AS address_created_at,
-            ad.updated_at AS address_updated_at,
+        -- address fields ...
+        ad.id AS address_id,
+        ad.street_address,
+        ad.city,
+        ad.state_or_region,
+        ad.county_or_district,
+        ad.postal_code,
+        ad.country,
+        ad.latitude,
+        ad.longitude,
+        ad.created_at AS address_created_at,
+        ad.updated_at AS address_updated_at,
 
-            COALESCE(
-                (SELECT jsonb_agg(jsonb_build_object(
-                    'id', lt.id,
-                    'listing_id', lt.listing_id,
-                    'tag', lt.tag,
-                    'created_at', lt.created_at,
-                    'updated_at', lt.updated_at
-                )) FROM listing_tags lt WHERE lt.listing_id = l.id),
-                '[]'::jsonb
-            ) AS "tags: Json<Vec<TagOut>>",
+        COALESCE(
+            (SELECT jsonb_agg(jsonb_build_object(
+                'id', lt.id,
+                'listing_id', lt.listing_id,
+                'tag', lt.tag,
+                'created_at', lt.created_at,
+                'updated_at', lt.updated_at
+            )) FROM listing_tags lt WHERE lt.listing_id = l.id),
+            '[]'::jsonb
+        ) AS "tags: Json<Vec<TagOut>>",
 
-            COALESCE(
-                (SELECT jsonb_agg(jsonb_build_object(
-                    'id', aa.id,
-                    'apartment_id', aa.apartment_id,
-                    'amenity', aa.amenity,
-                    'created_at', aa.created_at,
-                    'updated_at', aa.updated_at
-                )) FROM apartment_amenities aa WHERE aa.apartment_id = a.id),
-                '[]'::jsonb
-            ) AS "amenities: Json<Vec<AmenityOut>>",
+        COALESCE(
+            (SELECT jsonb_agg(jsonb_build_object(
+                'id', aa.id,
+                'apartment_id', aa.apartment_id,
+                'amenity', aa.amenity,
+                'created_at', aa.created_at,
+                'updated_at', aa.updated_at
+            )) FROM apartment_amenities aa WHERE aa.apartment_id = a.id),
+            '[]'::jsonb
+        ) AS "amenities: Json<Vec<AmenityOut>>",
 
-            COALESCE(
-                (SELECT jsonb_agg(jsonb_build_object(
-                    'id', ap.id,
-                    'apartment_id', ap.apartment_id,
-                    'url', ap.url,
-                    'is_primary', ap.is_primary,
-                    'created_at', ap.created_at,
-                    'updated_at', ap.updated_at
-                )) FROM apartment_pictures ap WHERE ap.apartment_id = a.id),
-                '[]'::jsonb
-            ) AS "pictures: Json<Vec<PictureOut>>"
-        "#;
+        COALESCE(
+            (SELECT jsonb_agg(jsonb_build_object(
+                'id', ap.id,
+                'apartment_id', ap.apartment_id,
+                'url', ap.url,
+                'is_primary', ap.is_primary,
+                'created_at', ap.created_at,
+                'updated_at', ap.updated_at
+            )) FROM apartment_pictures ap WHERE ap.apartment_id = a.id),
+            '[]'::jsonb
+        ) AS "pictures: Json<Vec<PictureOut>>"
+    "#;
 
     let mut listing_qb = QueryBuilder::new(select_base);
     let mut count_qb = QueryBuilder::new(
@@ -299,8 +299,7 @@ pub async fn get_many_listings(
 
     if let Some(condition) = &search_params.condition {
         match condition {
-            Condition::Any => {}
-            Condition::Old => {
+            &ApartmentCondition::Old => {
                 listing_qb
                     .push(" AND a.condition = ")
                     .push_bind("old")
@@ -310,7 +309,7 @@ pub async fn get_many_listings(
                     .push_bind("old")
                     .push("::apartment_condition");
             }
-            Condition::Repaired => {
+            ApartmentCondition::Repaired => {
                 listing_qb
                     .push(" AND a.condition = ")
                     .push_bind("repaired")
@@ -320,7 +319,7 @@ pub async fn get_many_listings(
                     .push_bind("repaired")
                     .push("::apartment_condition");
             }
-            Condition::New => {
+            ApartmentCondition::New => {
                 listing_qb
                     .push(" AND a.condition = ")
                     .push_bind("new")
@@ -659,8 +658,9 @@ pub async fn create_listing(
         listing_in.apartment.apartment_floor,
         listing_in.apartment.total_building_floors,
         listing_in.apartment.has_elevator,
-        listing_in.apartment.condition as _,
-        listing_in.apartment.sale_type as _,
+        listing_in.apartment.condition as Option<ApartmentCondition>, // this correct
+        // SQLx doesn’t automatically know how to encode your enum
+        listing_in.apartment.sale_type as _, // this also correct, let Rust infer SQLx type for enums
         listing_in.apartment.requirements,
         listing_in.apartment.has_garden,
         listing_in.apartment.distance_to_kindergarten,

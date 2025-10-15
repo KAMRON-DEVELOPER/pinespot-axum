@@ -1,4 +1,7 @@
-use crate::{features::listings::models::SaleType, utilities::errors::AppError};
+use crate::{
+    features::listings::models::{ApartmentCondition, SaleType},
+    utilities::errors::AppError,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
@@ -8,16 +11,6 @@ pub enum Sort {
     Newest,
     Cheap,
     Expensive,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
-#[serde(rename_all = "camelCase")]
-pub enum Condition {
-    #[default]
-    Any,
-    Old,
-    Repaired,
-    New,
 }
 
 #[derive(Deserialize, Serialize, Default, Debug)]
@@ -40,7 +33,7 @@ pub struct SearchParams {
     pub min_building_floors: Option<i64>,
 
     pub has_elevator: Option<bool>,
-    pub condition: Option<Condition>,
+    pub condition: Option<ApartmentCondition>,
     pub sale_type: Option<SaleType>,
     pub has_garden: Option<bool>,
 

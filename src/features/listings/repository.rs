@@ -13,7 +13,9 @@ use object_store::{ObjectStore, path::Path as ObjectStorePath};
 
 use sqlx::QueryBuilder;
 use sqlx::{FromRow, PgPool, types::BigDecimal, types::Json};
+use tracing::debug;
 use uuid::Uuid;
+use validator::ValidateLength;
 
 #[derive(FromRow)]
 pub struct ListingJoined {
@@ -623,6 +625,9 @@ pub async fn create_listing(
     // Parse multipart
     while let Some(field) = multipart.next_field().await.unwrap() {
         let name = field.name().unwrap().to_string();
+
+        debug!("multipart.next_field() name: {}", name);
+
         match name.as_str() {
             "listing_data" => {
                 listing_json = Some(field.text().await.unwrap());
@@ -634,7 +639,12 @@ pub async fn create_listing(
         }
     }
 
+    debug!("listing_json: {:#?}", listing_json);
+    debug!("picture_files.length(): {:#?}", picture_files.length());
+
     let listing_in: ListingIn = serde_json::from_str(&listing_json.unwrap())?;
+
+    debug!("listing_in: {:#?}", listing_in);
 
     // Start transaction
     let mut tx = pool.begin().await?;
@@ -643,10 +653,34 @@ pub async fn create_listing(
     let apartment_id = Uuid::new_v4();
     sqlx::query!(
         r#"
-        INSERT INTO apartments (id, title, description, rooms, beds, baths, area, apartment_floor, total_building_floors, 
-            has_elevator, condition, sale_type, requirements, has_garden, 
-            distance_to_kindergarten, distance_to_school, distance_to_hospital)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, $17)
+        INSERT INTO apartments (
+            id,
+            title,
+            description,
+            rooms,
+            beds,
+            baths,
+            area,
+            apartment_floor,
+            total_building_floors,
+            condition,
+            sale_type,
+            requirements,
+            furnished,
+            pets_allowed,
+            has_elevator,
+            has_garden,
+            has_parking,
+            has_balcony,
+            has_ac,
+            has_heating,
+            distance_to_kindergarten,
+            distance_to_school,
+            distance_to_hospital,
+            distance_to_metro,
+            distance_to_bus_stop,
+            distance_to_shopping)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
         "#,
         apartment_id,
         listing_in.apartment.title,
@@ -657,15 +691,24 @@ pub async fn create_listing(
         listing_in.apartment.area,
         listing_in.apartment.apartment_floor,
         listing_in.apartment.total_building_floors,
-        listing_in.apartment.has_elevator,
         listing_in.apartment.condition as ApartmentCondition, // this correct
         // SQLx doesn’t automatically know how to encode your enum
         listing_in.apartment.sale_type as _, // this also correct, let Rust infer SQLx type for enums
         listing_in.apartment.requirements,
+        listing_in.apartment.furnished,
+        listing_in.apartment.pets_allowed,
+        listing_in.apartment.has_elevator,
         listing_in.apartment.has_garden,
+        listing_in.apartment.has_parking,
+        listing_in.apartment.has_balcony,
+        listing_in.apartment.has_ac,
+        listing_in.apartment.has_heating,
         listing_in.apartment.distance_to_kindergarten,
         listing_in.apartment.distance_to_school,
-        listing_in.apartment.distance_to_hospital
+        listing_in.apartment.distance_to_hospital,
+        listing_in.apartment.distance_to_metro,
+        listing_in.apartment.distance_to_bus_stop,
+        listing_in.apartment.distance_to_shopping
     )
     .execute(&mut *tx)
     .await?;

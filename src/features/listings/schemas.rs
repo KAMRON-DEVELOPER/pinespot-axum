@@ -10,13 +10,13 @@ use uuid::Uuid;
 // -- =====================
 // -- IN
 // -- =====================
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct PictureIn {
     pub url: String,
     pub is_primary: Option<bool>,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct AddressIn {
     pub street_address: String,
     pub city: String,
@@ -28,7 +28,7 @@ pub struct AddressIn {
     pub longitude: f64,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct ApartmentIn {
     pub title: String,
     pub description: Option<String>,
@@ -60,7 +60,7 @@ pub struct ApartmentIn {
     pub distance_to_shopping: i32,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct ListingIn {
     pub price: BigDecimal,
     pub apartment: ApartmentIn,

@@ -658,7 +658,7 @@ pub async fn create_listing(
         listing_in.apartment.apartment_floor,
         listing_in.apartment.total_building_floors,
         listing_in.apartment.has_elevator,
-        listing_in.apartment.condition as Option<ApartmentCondition>, // this correct
+        listing_in.apartment.condition as ApartmentCondition, // this correct
         // SQLx doesn’t automatically know how to encode your enum
         listing_in.apartment.sale_type as _, // this also correct, let Rust infer SQLx type for enums
         listing_in.apartment.requirements,

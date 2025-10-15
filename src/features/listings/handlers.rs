@@ -118,7 +118,7 @@ pub async fn delete_listing_handler(
         }),
         _ => Ok((
             StatusCode::NO_CONTENT,
-            Json(json!({"message": "Your listing created successfully!"})),
+            Json(json!({"message": "Your listing was deleted successfully!"})),
         )),
     }
 }

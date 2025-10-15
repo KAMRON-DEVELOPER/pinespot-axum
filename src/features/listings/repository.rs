@@ -236,14 +236,6 @@ pub async fn get_many_listings(
         }
     }
 
-    if let Some(sort) = &search_params.sort {
-        match sort {
-            Sort::Newest => listing_qb.push(" ORDER BY l.created_at DESC "),
-            Sort::Cheap => listing_qb.push(" ORDER BY l.price ASC "),
-            Sort::Expensive => listing_qb.push(" ORDER BY l.price DESC "),
-        };
-    }
-
     if !search_params.country.trim().is_empty() {
         listing_qb
             .push(" AND ad.country = ")
@@ -331,6 +323,14 @@ pub async fn get_many_listings(
 
     // GROUP BY clause required for the aggregates
     listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
+
+    if let Some(sort) = &search_params.sort {
+        match sort {
+            Sort::Newest => listing_qb.push(" ORDER BY l.created_at DESC "),
+            Sort::Cheap => listing_qb.push(" ORDER BY l.price ASC "),
+            Sort::Expensive => listing_qb.push(" ORDER BY l.price DESC "),
+        };
+    }
 
     listing_qb.push(" OFFSET ").push_bind(pagination.offset);
     listing_qb.push(" LIMIT ").push_bind(pagination.limit);

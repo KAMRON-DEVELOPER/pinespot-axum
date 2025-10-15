@@ -32,10 +32,36 @@ pub struct SearchParams {
     pub apartment_floor: Option<i64>,
     pub min_building_floors: Option<i64>,
 
-    pub has_elevator: Option<bool>,
     pub condition: Option<ApartmentCondition>,
     pub sale_type: Option<SaleType>,
+
+    // Won't work, because query params always string
+    // pub furnished: Option<bool>,
+    // pub pets_allowed: Option<bool>,
+    // pub has_elevator: Option<bool>,
+    // pub has_garden: Option<bool>,
+    // pub has_parking: Option<bool>,
+    // pub has_balcony: Option<bool>,
+    // pub has_ac: Option<bool>,
+    // pub has_heating: Option<bool>,
+
+    // use #[serde(deserialize_with)]
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub furnished: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub pets_allowed: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub has_elevator: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
     pub has_garden: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub has_parking: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub has_balcony: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub has_ac: Option<bool>,
+    #[serde(deserialize_with = "deserialize_bool_from_any")]
+    pub has_heating: Option<bool>,
 
     // Distances (in km)
     pub max_distance_to_kindergarten: Option<i64>,
@@ -44,6 +70,17 @@ pub struct SearchParams {
     pub max_distance_to_metro: Option<i64>,
     pub max_distance_to_bus_stop: Option<i64>,
     pub max_distance_to_shopping: Option<i64>,
+}
+
+fn deserialize_bool_from_any<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(match String::deserialize(deserializer)?.as_str() {
+        "true" | "1" => true,
+        "false" | "0" => false,
+        _ => return Err(serde::de::Error::custom("expected true/false or 1/0")),
+    }))
 }
 
 // impl SearchParams {

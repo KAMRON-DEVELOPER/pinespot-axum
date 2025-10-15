@@ -3,6 +3,7 @@ use crate::{
     utilities::errors::AppError,
 };
 use serde::{Deserialize, Serialize};
+use serde_with::{DisplayFromStr, serde_as};
 
 #[derive(Serialize, Deserialize, PartialEq, Eq, Default, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +14,7 @@ pub enum Sort {
     Expensive,
 }
 
+#[serde_as]
 #[derive(Deserialize, Serialize, Default, Debug)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SearchParams {
@@ -20,32 +22,28 @@ pub struct SearchParams {
     pub q: Option<String>,
     pub sort: Option<Sort>,
     pub country: String,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_price: Option<u64>,
 
     // Property details
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub min_rooms: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub min_beds: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub min_baths: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub min_area: Option<i64>,
 
     // Floor handling - clarified
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub apartment_floor: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub min_building_floors: Option<i64>,
 
     pub condition: Option<ApartmentCondition>,
     pub sale_type: Option<SaleType>,
 
-    // Won't work, because query params always string
-    // pub furnished: Option<bool>,
-    // pub pets_allowed: Option<bool>,
-    // pub has_elevator: Option<bool>,
-    // pub has_garden: Option<bool>,
-    // pub has_parking: Option<bool>,
-    // pub has_balcony: Option<bool>,
-    // pub has_ac: Option<bool>,
-    // pub has_heating: Option<bool>,
-
-    // use #[serde(deserialize_with)]
     #[serde(deserialize_with = "deserialize_bool_from_any")]
     pub furnished: Option<bool>,
     #[serde(deserialize_with = "deserialize_bool_from_any")]
@@ -64,11 +62,17 @@ pub struct SearchParams {
     pub has_heating: Option<bool>,
 
     // Distances (in km)
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_distance_to_kindergarten: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_distance_to_school: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_distance_to_hospital: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_distance_to_metro: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_distance_to_bus_stop: Option<i64>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub max_distance_to_shopping: Option<i64>,
 }
 

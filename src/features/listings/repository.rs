@@ -205,9 +205,6 @@ pub async fn get_many_listings(
         "#,
     );
 
-    // GROUP BY clause required for the aggregates
-    listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
-
     if let Some(q) = &search_params.q {
         if !q.trim().is_empty() {
             let like = format!("%{}%", q.trim());
@@ -331,6 +328,9 @@ pub async fn get_many_listings(
             }
         }
     }
+
+    // GROUP BY clause required for the aggregates
+    listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
 
     listing_qb.push(" OFFSET ").push_bind(pagination.offset);
     listing_qb.push(" LIMIT ").push_bind(pagination.limit);

@@ -29,6 +29,10 @@ pub enum AppError {
     MissingQdrantApiKeyError,
     #[error("Qdrant error: {0}")]
     QdrantError(#[from] qdrant_client::QdrantError),
+    #[error("ImageEmbedding creation error")]
+    ImageEmbeddingCreationError,
+    #[error("TextEmbedding creation error")]
+    TextEmbeddingCreationError,
     #[error("Bcrypt error: {0}")]
     BcryptError(#[from] bcrypt::BcryptError),
     #[error("Object storage error: {0}")]
@@ -239,6 +243,14 @@ impl IntoResponse for AppError {
                 "Missing qdrant api key error".to_string(),
             ),
             Self::QdrantError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::ImageEmbeddingCreationError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "ImageEmbedding creation error".to_string(),
+            ),
+            Self::TextEmbeddingCreationError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "TextEmbedding creation error".to_string(),
+            ),
             Self::BcryptError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::ObjectStorageError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::Request(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),

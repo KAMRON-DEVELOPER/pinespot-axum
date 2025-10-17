@@ -71,6 +71,9 @@ qdrant-client = { version = "1.15.0", features = ["uuid"] }
 tonic = { version = "0.14.2", features = ["_tls-any", "tls-ring", "transport"] }
 tonic-rustls = { version = "0.2.0", features = ["axum"] }
 tonic-tls = { version = "0.6.0", features = ["rustls"] }
+rust-bert = "0.23.0"
+fastembed = "5.2.0"
+tch = "0.17.0"
 
 # Important secondary crates
 

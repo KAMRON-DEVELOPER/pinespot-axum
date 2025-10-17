@@ -8,6 +8,7 @@ use std::result::Result::Ok;
 use crate::{
     features::{listings, users},
     services::{
+        ai::AI,
         database::Database,
         qdrant::build_qdrant,
         redis::Redis,
@@ -74,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = Database::new(&config).await?;
     let redis = Redis::new(&config).await?;
     let qdrant = build_qdrant(&config).await?;
+    let ai = AI::new()?;
     let key = Key::from(config.key.as_ref().unwrap().as_bytes());
     let google_oauth_client = build_google_oauth_client(&config)?;
     let github_oauth_client = build_github_oauth_client(&config)?;
@@ -88,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         database,
         redis,
         qdrant,
+        ai,
         config: config.clone(),
         key,
         google_oauth_client,

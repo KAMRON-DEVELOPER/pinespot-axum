@@ -1,5 +1,5 @@
 use crate::{
-    services::{database::Database, redis::Redis},
+    services::{ai::AI, database::Database, redis::Redis},
     utilities::{
         config::Config,
         google_oauth_openidconnect::GoogleOAuthOpenIdConnectClient,
@@ -17,6 +17,7 @@ pub struct AppState {
     pub database: Database,
     pub redis: Redis,
     pub qdrant: Qdrant,
+    pub ai: AI,
     pub config: Config,
     pub key: Key,
     pub google_oauth_client: GoogleOAuthClient,
@@ -42,6 +43,12 @@ impl FromRef<AppState> for Redis {
 impl FromRef<AppState> for Qdrant {
     fn from_ref(state: &AppState) -> Self {
         state.qdrant.clone()
+    }
+}
+
+impl FromRef<AppState> for AI {
+    fn from_ref(state: &AppState) -> Self {
+        state.ai.clone()
     }
 }
 

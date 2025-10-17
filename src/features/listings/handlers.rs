@@ -7,6 +7,7 @@ use axum::{
 
 use axum_extra::extract::PrivateCookieJar;
 use object_store::gcp::GoogleCloudStorage;
+use qdrant_client::Qdrant;
 use serde_json::json;
 use tracing::debug;
 use uuid::Uuid;
@@ -60,6 +61,7 @@ pub async fn get_stats_handler(
 pub async fn get_many_listings_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,
+    State(qdrant): State<Qdrant>,
     Query(listing_query): Query<ListingQuery>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
 ) -> Result<Response, AppError> {

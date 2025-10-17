@@ -27,6 +27,10 @@ pub struct Config {
     pub redis_username: Option<String>,
     pub redis_password: Option<String>,
 
+    // QDRANT
+    pub qdrant_url: Option<String>,
+    pub qdrant_api_key: Option<String>,
+
     // FIREBASE ADMIN SDK
     pub firebase_adminsdk: Option<String>,
     pub firebase_adminsdk_path: Option<PathBuf>,
@@ -147,6 +151,16 @@ impl Config {
             Some("password".to_string()),
         )
         .await;
+
+        let qdrant_url = get_config_value(
+            "QDRANT_URL",
+            Some("QDRANT_URL"),
+            None,
+            Some("http://localhost:6334".to_string()),
+        )
+        .await;
+        let qdrant_api_key =
+            get_config_value("QDRANT_API_KEY", Some("QDRANT_API_KEY"), None, None).await;
 
         let firebase_adminsdk_path = base_dir.join("certs/firebase-adminsdk.json");
         let firebase_adminsdk = get_config_value(
@@ -299,6 +313,8 @@ impl Config {
             redis_port,
             redis_username,
             redis_password,
+            qdrant_url,
+            qdrant_api_key,
             firebase_adminsdk,
             firebase_adminsdk_path: Some(firebase_adminsdk_path),
             gcp_project_id,

@@ -67,6 +67,10 @@ time = { version = "0.3.44", features = ["formatting", "macros"] }
 bigdecimal = { version = "0.4.8", features = ["serde"] }
 bytes = { version = "1.10.1", features = ["serde"] }
 serde_with = "3.15.0"
+qdrant-client = { version = "1.15.0", features = ["uuid"] }
+tonic = { version = "0.14.2", features = ["_tls-any", "tls-ring", "transport"] }
+tonic-rustls = { version = "0.2.0", features = ["axum"] }
+tonic-tls = { version = "0.6.0", features = ["rustls"] }
 
 # Important secondary crates
 

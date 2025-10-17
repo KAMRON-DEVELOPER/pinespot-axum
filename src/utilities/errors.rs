@@ -23,6 +23,12 @@ pub enum AppError {
     RedisUrlNotSetError,
     #[error("Redis error: {0}")]
     RedisError(#[from] redis::RedisError),
+    #[error("Missing qdrant url error")]
+    MissingQdrantUrlError,
+    #[error("Missing qdrant api key error")]
+    MissingQdrantApiKeyError,
+    #[error("Qdrant error: {0}")]
+    QdrantError(#[from] qdrant_client::QdrantError),
     #[error("Bcrypt error: {0}")]
     BcryptError(#[from] bcrypt::BcryptError),
     #[error("Object storage error: {0}")]
@@ -35,6 +41,8 @@ pub enum AppError {
     UuidParseError(#[from] uuid::Error),
     #[error("Url parse error: {0}")]
     UrlParseError(#[from] url::ParseError),
+    #[error("Invalid uri error: {0}")]
+    InvalidUriError(#[from] axum::http::uri::InvalidUri),
     #[error("Openidconnect discovery error: {0}")]
     OpenIdConnectDiscoveryError(
         #[from] openidconnect::DiscoveryError<oauth2::HttpClientError<reqwest::Error>>,
@@ -59,6 +67,16 @@ pub enum AppError {
     MissingEmailServiceApiKeyError,
     #[error("Missing credentials")]
     MissingCredentials,
+    #[error("Missing tls ca error")]
+    MissingTlsCaError,
+    #[error("Missing tls key error")]
+    MissingTlsKeyError,
+    #[error("Missing tls cert error")]
+    MissingTlsCertError,
+    #[error("Tonic error")]
+    TonicError(#[from] tonic::transport::Error),
+    #[error("Tonic rustls error")]
+    TonicRustlsError(#[from] tonic_rustls::Error),
     #[error("Token creation error")]
     TokenCreationError,
     #[error("Invalid token error")]
@@ -212,6 +230,15 @@ impl IntoResponse for AppError {
                 "Redis url not set error".to_string(),
             ),
             Self::RedisError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::MissingQdrantUrlError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing qdrant url error".to_string(),
+            ),
+            Self::MissingQdrantApiKeyError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing qdrant api key error".to_string(),
+            ),
+            Self::QdrantError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::BcryptError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::ObjectStorageError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::Request(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
@@ -224,6 +251,7 @@ impl IntoResponse for AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 format!("Url parse error, {}", e),
             ),
+            Self::InvalidUriError(e) => (StatusCode::UNPROCESSABLE_ENTITY, e.to_string()),
             Self::OpenIdConnectDiscoveryError(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Openidconnect discovery error, {}", e),
@@ -270,6 +298,20 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Missing credentials".to_string(),
             ),
+            AppError::MissingTlsCaError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing tls ca error".to_string(),
+            ),
+            AppError::MissingTlsKeyError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing tls key error".to_string(),
+            ),
+            AppError::MissingTlsCertError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing tls cert error".to_string(),
+            ),
+            AppError::TonicError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            AppError::TonicRustlsError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             AppError::InternalError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             AppError::ExternalServiceError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             AppError::MissingEmailServiceApiKeyError => (

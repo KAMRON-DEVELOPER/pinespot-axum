@@ -1,7 +1,6 @@
 use std::{
     fs::File,
     io::{BufReader, Cursor},
-    sync::Arc,
 };
 
 use rustls::{
@@ -13,8 +12,7 @@ use rustls_pemfile::{Item, read_one};
 use crate::utilities::{config::Config, errors::AppError};
 
 /// Build TLS client config from Config.
-/// Returns `Ok(None)` if any required part (CA, client cert, client key) is missing.
-pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, AppError> {
+pub fn build_rustls_config(config: &Config) -> Result<ClientConfig, AppError> {
     let ca: Option<String> = config.ca.clone();
     let ca_path: Option<std::path::PathBuf> = config.ca_path.clone();
     let client_cert: Option<String> = config.client_cert.clone();
@@ -23,13 +21,13 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
     let client_key_path: Option<std::path::PathBuf> = config.client_key_path.clone();
 
     if ca.is_none() && ca_path.is_none() {
-        return Ok(None);
+        return Err(AppError::MissingTlsCaError);
     }
     if client_cert.is_none() && client_cert_path.is_none() {
-        return Ok(None);
+        return Err(AppError::MissingTlsCertError);
     }
     if client_key.is_none() && client_key_path.is_none() {
-        return Ok(None);
+        return Err(AppError::MissingTlsKeyError);
     }
 
     // --- 1. Load Root CA ---
@@ -164,7 +162,7 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
             }
             certs
         } else {
-            return Ok(None); // Missing client cert
+            return Err(AppError::MissingTlsCertError); // Missing client cert
         }
     };
 
@@ -216,7 +214,7 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
                 }
             }
         } else {
-            return Ok(None); // Missing client key
+            return Err(AppError::MissingTlsKeyError); // Missing client key
         }
     };
 
@@ -225,5 +223,5 @@ pub fn build_tls_config(config: &Config) -> Result<Option<Arc<ClientConfig>>, Ap
         .with_root_certificates(root_store)
         .with_client_auth_cert(client_certs, client_key)?;
 
-    Ok(Some(Arc::new(client_config)))
+    Ok(client_config)
 }

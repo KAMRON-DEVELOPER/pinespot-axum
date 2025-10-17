@@ -8,6 +8,7 @@ use axum::{
 use axum_extra::extract::PrivateCookieJar;
 use object_store::gcp::GoogleCloudStorage;
 use serde_json::json;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -70,6 +71,8 @@ pub async fn get_many_listings_handler(
     }
 
     listing_query.pagination.validate()?;
+
+    debug!("country: {}", listing_query.search_params.country);
 
     let (listings, total) = get_many_listings(&database.pool, &listing_query).await?;
 

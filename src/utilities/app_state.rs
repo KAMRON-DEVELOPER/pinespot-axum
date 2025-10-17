@@ -9,12 +9,14 @@ use crate::{
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
 use object_store::{aws::AmazonS3, gcp::GoogleCloudStorage};
+use qdrant_client::Qdrant;
 use reqwest::Client;
 
 #[derive(Clone)]
 pub struct AppState {
     pub database: Database,
     pub redis: Redis,
+    pub qdrant: Qdrant,
     pub config: Config,
     pub key: Key,
     pub google_oauth_client: GoogleOAuthClient,
@@ -34,6 +36,12 @@ impl FromRef<AppState> for Database {
 impl FromRef<AppState> for Redis {
     fn from_ref(state: &AppState) -> Self {
         state.redis.clone()
+    }
+}
+
+impl FromRef<AppState> for Qdrant {
+    fn from_ref(state: &AppState) -> Self {
+        state.qdrant.clone()
     }
 }
 

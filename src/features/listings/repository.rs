@@ -15,7 +15,6 @@ use sqlx::QueryBuilder;
 use sqlx::{FromRow, PgPool, types::BigDecimal, types::Json};
 use tracing::debug;
 use uuid::Uuid;
-use validator::ValidateLength;
 
 #[derive(FromRow)]
 pub struct ListingJoined {
@@ -109,8 +108,8 @@ pub async fn get_many_listings(
         u.email AS owner_email,
         u.phone_number AS owner_phone,
         u.picture AS owner_picture,
-        u.role AS "owner_role: UserRole",
-        u.status AS "owner_status: UserStatus",
+        u.role AS owner_role,
+        u.status AS owner_status,
         u.email_verified AS owner_email_verified,
         u.oauth_user_id AS owner_oauth_user_id,
         u.created_at AS owner_created_at,
@@ -126,14 +125,23 @@ pub async fn get_many_listings(
         a.area AS apartment_area,
         a.apartment_floor AS apartment_floor,
         a.total_building_floors AS apartment_total_building_floors,
-        a.has_elevator AS apartment_has_elevator,
-        a.condition AS "apartment_condition: ApartmentCondition",
-        a.sale_type AS "apartment_sale_type: SaleType",
+        a.condition AS apartment_condition,
+        a.sale_type AS apartment_sale_type,
         a.requirements AS apartment_requirements,
+        a.furnished AS apartment_furnished,
+        a.pets_allowed AS apartment_pets_allowed,
+        a.has_elevator AS apartment_has_elevator,
         a.has_garden AS apartment_has_garden,
+        a.has_parking AS apartment_has_parking,
+        a.has_balcony AS apartment_has_balcony,
+        a.has_ac AS apartment_has_ac,
+        a.has_heating AS apartment_has_heating,
         a.distance_to_kindergarten,
         a.distance_to_school,
         a.distance_to_hospital,
+        a.distance_to_metro,
+        a.distance_to_bus_stop,
+        a.distance_to_shopping,
         a.created_at AS apartment_created_at,
         a.updated_at AS apartment_updated_at,
 
@@ -159,7 +167,7 @@ pub async fn get_many_listings(
                 'updated_at', lt.updated_at
             )) FROM listing_tags lt WHERE lt.listing_id = l.id),
             '[]'::jsonb
-        ) AS "tags: Json<Vec<TagOut>>",
+        ) AS "tags",
 
         COALESCE(
             (SELECT jsonb_agg(jsonb_build_object(
@@ -170,7 +178,7 @@ pub async fn get_many_listings(
                 'updated_at', aa.updated_at
             )) FROM apartment_amenities aa WHERE aa.apartment_id = a.id),
             '[]'::jsonb
-        ) AS "amenities: Json<Vec<AmenityOut>>",
+        ) AS "amenities",
 
         COALESCE(
             (SELECT jsonb_agg(jsonb_build_object(
@@ -182,7 +190,7 @@ pub async fn get_many_listings(
                 'updated_at', ap.updated_at
             )) FROM apartment_pictures ap WHERE ap.apartment_id = a.id),
             '[]'::jsonb
-        ) AS "pictures: Json<Vec<PictureOut>>"
+        ) AS "pictures"
     "#;
 
     let mut listing_qb = QueryBuilder::new(select_base);
@@ -640,7 +648,6 @@ pub async fn create_listing(
     }
 
     debug!("listing_json: {:#?}", listing_json);
-    debug!("picture_files.length(): {:#?}", picture_files.length());
 
     let listing_in: ListingIn = serde_json::from_str(&listing_json.unwrap())?;
 
@@ -733,6 +740,19 @@ pub async fn create_listing(
     .execute(&mut *tx)
     .await?;
 
+    for amenity in listing_in.apartment.amenities {
+        sqlx::query!(
+            r#"
+            INSERT INTO apartment_amenities (apartment_id, amenity)
+            VALUES ($1,$2)
+            "#,
+            apartment_id,
+            amenity
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
     // Upload pictures and insert records
     for (idx, data) in picture_files.iter().enumerate() {
         let pic_id = Uuid::new_v4();
@@ -767,6 +787,22 @@ pub async fn create_listing(
     .execute(&mut *tx)
     .await?;
 
+    // Listing tags
+    for tag in listing_in.tags {
+        if tag.is_empty() {
+            continue;
+        };
+
+        sqlx::query!(
+            "INSERT INTO listing_tags (listing_id, tag) VALUES ($1, $2)",
+            listing_id,
+            tag
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
     tx.commit().await?;
+
     Ok(())
 }

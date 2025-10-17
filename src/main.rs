@@ -1,9 +1,7 @@
-// Modules
 pub mod features;
 pub mod services;
 pub mod utilities;
 
-// Crates bring to current scope
 use std::net::SocketAddr;
 use std::result::Result::Ok;
 
@@ -11,6 +9,7 @@ use crate::{
     features::{listings, users},
     services::{
         database::Database,
+        qdrant::build_qdrant,
         redis::Redis,
         s3::{build_gcs, build_s3},
     },
@@ -70,10 +69,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
-    // let tls_config = build_tls_config(&config)?;
+    // let rustls_config = build_rustls_config(&config)?;
     // let shared_tls_config = tls_config;
     let database = Database::new(&config).await?;
     let redis = Redis::new(&config).await?;
+    let qdrant = build_qdrant(&config).await?;
     let key = Key::from(config.key.as_ref().unwrap().as_bytes());
     let google_oauth_client = build_google_oauth_client(&config)?;
     let github_oauth_client = build_github_oauth_client(&config)?;
@@ -87,6 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_state = AppState {
         database,
         redis,
+        qdrant,
         config: config.clone(),
         key,
         google_oauth_client,

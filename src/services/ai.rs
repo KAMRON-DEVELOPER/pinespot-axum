@@ -34,7 +34,7 @@ impl AI {
 
     // Generate embedding for text
     pub fn embed_text(&self, text: &str) -> Result<Vec<f32>, AppError> {
-        let embedding = self.text_model.encode(&[text])?;
+        let embedding = self.text_model.encode(&[text]);
         Ok(embedding.into_iter().next().unwrap())
     }
 

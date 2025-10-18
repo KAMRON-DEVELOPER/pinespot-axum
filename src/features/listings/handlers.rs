@@ -94,10 +94,12 @@ pub async fn get_one_listing_handler(
 pub async fn create_listing_handler(
     claims: Claims,
     State(database): State<Database>,
+    State(ai): State<AI>,
+    State(qdrant): State<Qdrant>,
     State(gcs): State<GoogleCloudStorage>,
     multipart: Multipart,
 ) -> Result<impl IntoResponse, AppError> {
-    create_listing(claims.sub, &database.pool, gcs, multipart).await?;
+    create_listing(claims.sub, &database.pool, gcs, qdrant, ai, multipart).await?;
     Ok((
         StatusCode::CREATED,
         Json(json!({"message": "Your listing created successfully!"})),

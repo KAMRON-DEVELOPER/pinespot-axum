@@ -101,7 +101,7 @@ pub fn build_fastembed_text_embedding() -> Result<TextEmbedding, AppError> {
     //     Alibaba-NLP/gte-large-en-v1.5
 
     let model = TextEmbedding::try_new(
-        InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+        InitOptions::new(EmbeddingModel::ClipVitB32).with_show_download_progress(true),
     )
     .map_err(|_| AppError::TextEmbeddingCreationError)?;
 

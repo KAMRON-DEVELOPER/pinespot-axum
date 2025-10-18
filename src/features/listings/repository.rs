@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::features::listings::models::{ApartmentCondition, SaleType};
 use crate::features::listings::schemas::{
     AddressOut, AmenityOut, ApartmentOut, ListingIn, ListingOut, PictureOut, TagOut,
@@ -12,7 +14,14 @@ use chrono::{DateTime, Utc};
 use object_store::gcp::GoogleCloudStorage;
 use object_store::{ObjectStore, path::Path as ObjectStorePath};
 
-use qdrant_client::Qdrant;
+use qdrant_client::qdrant::value::Kind;
+use qdrant_client::qdrant::vectors::VectorsOptions;
+use qdrant_client::qdrant::{
+    Condition, Filter, NamedVectors, PointId, PointStruct, QueryPointsBuilder, SearchPoints,
+    SearchPointsBuilder, UpsertPointsBuilder, Vector, VectorInput, Vectors,
+};
+use qdrant_client::{Payload, Qdrant};
+use serde_json::json;
 use sqlx::QueryBuilder;
 use sqlx::{FromRow, PgPool, types::BigDecimal, types::Json};
 use tracing::debug;
@@ -98,6 +107,26 @@ pub async fn get_many_listings(
         pagination,
         search_params,
     } = listing_query;
+
+    let mut listing_ids: Option<Vec<Uuid>> = None;
+
+    if let Some(q) = &search_params.q {
+        if !q.trim().is_empty() {
+            // Convert text query to embedding
+            let query_vector = ai.embed_text(q).unwrap_or_else(|_| Vec::new());
+
+            // Perform vector search if there's a text query
+            let vector_matched_ids = if let Some(q) = &search_params.q {
+                if !q.trim().is_empty() {
+                    perform_hybrid_search(q.trim(), &qdrant, &ai).await?
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+        }
+    }
 
     let select_base = r#"
     SELECT
@@ -219,34 +248,19 @@ pub async fn get_many_listings(
         "#,
     );
 
-    if let Some(q) = &search_params.q {
-        if !q.trim().is_empty() {
-            let like = format!("%{}%", q.trim());
-            listing_qb
-                .push(" AND (a.title ILIKE ")
-                .push_bind(like.clone());
-            listing_qb
-                .push(" OR a.description ILIKE ")
-                .push_bind(like.clone());
-            listing_qb
-                .push(" OR ad.city ILIKE ")
-                .push_bind(like.clone());
-            listing_qb
-                .push(" OR ad.street_address ILIKE ")
-                .push_bind(like.clone());
+    // Apply vector search filter if available
+    if let Some(ids) = &vector_matched_ids {
+        if !ids.is_empty() {
+            listing_qb.push(" AND l.id = ANY(");
+            listing_qb.push_bind(ids);
             listing_qb.push(")");
 
-            count_qb
-                .push(" AND (a.title ILIKE ")
-                .push_bind(like.clone());
-            count_qb
-                .push(" OR a.description ILIKE ")
-                .push_bind(like.clone());
-            count_qb.push(" OR ad.city ILIKE ").push_bind(like.clone());
-            count_qb
-                .push(" OR ad.street_address ILIKE ")
-                .push_bind(like);
+            count_qb.push(" AND l.id = ANY(");
+            count_qb.push_bind(ids);
             count_qb.push(")");
+        } else {
+            // No matches from vector search, return empty
+            return Ok((vec![], 0));
         }
     }
 
@@ -259,79 +273,225 @@ pub async fn get_many_listings(
             .push_bind(search_params.country.clone());
     }
 
-    if let Some(max_price) = search_params.max_price
-        && max_price > 0
-    {
+    if let Some(max_price) = search_params.max_price {
+        if max_price > 0 {
+            listing_qb
+                .push(" AND l.price <= ")
+                .push_bind(max_price.to_string())
+                .push("::numeric");
+            count_qb
+                .push(" AND l.price <= ")
+                .push_bind(max_price.to_string())
+                .push("::numeric");
+        }
+    }
+
+    if let Some(min_rooms) = search_params.min_rooms {
+        if min_rooms > 0 {
+            listing_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
+            count_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
+        }
+    }
+
+    if let Some(min_beds) = search_params.min_beds {
+        if min_beds > 0 {
+            listing_qb.push(" AND a.beds >= ").push_bind(min_beds);
+            count_qb.push(" AND a.beds >= ").push_bind(min_beds);
+        }
+    }
+
+    if let Some(min_baths) = search_params.min_baths {
+        if min_baths > 0 {
+            listing_qb.push(" AND a.baths >= ").push_bind(min_baths);
+            count_qb.push(" AND a.baths >= ").push_bind(min_baths);
+        }
+    }
+
+    if let Some(min_area) = search_params.min_area {
+        if min_area > 0 {
+            listing_qb.push(" AND a.area >= ").push_bind(min_area);
+            count_qb.push(" AND a.area >= ").push_bind(min_area);
+        }
+    }
+
+    if let Some(apartment_floor) = search_params.apartment_floor {
         listing_qb
-            .push(" AND l.price <= ")
-            .push_bind(max_price.to_string())
-            .push("::numeric");
+            .push(" AND a.apartment_floor = ")
+            .push_bind(apartment_floor);
         count_qb
-            .push(" AND l.price <= ")
-            .push_bind(max_price.to_string())
-            .push("::numeric");
+            .push(" AND a.apartment_floor = ")
+            .push_bind(apartment_floor);
     }
 
-    if let Some(min_rooms) = search_params.min_rooms
-        && min_rooms > 0
-    {
-        listing_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
-        count_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
-    }
-
-    if let Some(min_beds) = search_params.min_beds
-        && min_beds > 0
-    {
-        listing_qb.push(" AND a.beds >= ").push_bind(min_beds);
-        count_qb.push(" AND a.beds >= ").push_bind(min_beds);
-    }
-
-    if let Some(min_baths) = search_params.min_baths
-        && min_baths > 0
-    {
-        listing_qb.push(" AND a.baths >= ").push_bind(min_baths);
-        count_qb.push(" AND a.baths >= ").push_bind(min_baths);
-    }
-
-    if let Some(min_area) = search_params.min_area
-        && min_area > 0
-    {
-        listing_qb.push(" AND a.area >= ").push_bind(min_area);
-        count_qb.push(" AND a.area >= ").push_bind(min_area);
+    if let Some(min_building_floors) = search_params.min_building_floors {
+        if min_building_floors > 0 {
+            listing_qb
+                .push(" AND a.total_building_floors >= ")
+                .push_bind(min_building_floors);
+            count_qb
+                .push(" AND a.total_building_floors >= ")
+                .push_bind(min_building_floors);
+        }
     }
 
     if let Some(condition) = &search_params.condition {
-        match condition {
-            &ApartmentCondition::Old => {
-                listing_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("old")
-                    .push("::apartment_condition");
-                count_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("old")
-                    .push("::apartment_condition");
-            }
-            ApartmentCondition::Repaired => {
-                listing_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("repaired")
-                    .push("::apartment_condition");
-                count_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("repaired")
-                    .push("::apartment_condition");
-            }
-            ApartmentCondition::New => {
-                listing_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("new")
-                    .push("::apartment_condition");
-                count_qb
-                    .push(" AND a.condition = ")
-                    .push_bind("new")
-                    .push("::apartment_condition");
-            }
+        let condition_str = match condition {
+            ApartmentCondition::Old => "old",
+            ApartmentCondition::Repaired => "repaired",
+            ApartmentCondition::New => "new",
+        };
+        listing_qb
+            .push(" AND a.condition = ")
+            .push_bind(condition_str)
+            .push("::apartment_condition");
+        count_qb
+            .push(" AND a.condition = ")
+            .push_bind(condition_str)
+            .push("::apartment_condition");
+    }
+
+    if let Some(sale_type) = &search_params.sale_type {
+        let sale_type_str = match sale_type {
+            SaleType::Buy => "buy",
+            SaleType::Rent => "rent",
+        };
+        listing_qb
+            .push(" AND a.sale_type = ")
+            .push_bind(sale_type_str)
+            .push("::sale_type");
+        count_qb
+            .push(" AND a.sale_type = ")
+            .push_bind(sale_type_str)
+            .push("::sale_type");
+    }
+
+    // Boolean filters
+    if let Some(furnished) = search_params.furnished {
+        listing_qb.push(" AND a.furnished = ").push_bind(furnished);
+        count_qb.push(" AND a.furnished = ").push_bind(furnished);
+    }
+
+    if let Some(pets_allowed) = search_params.pets_allowed {
+        listing_qb
+            .push(" AND a.pets_allowed = ")
+            .push_bind(pets_allowed);
+        count_qb
+            .push(" AND a.pets_allowed = ")
+            .push_bind(pets_allowed);
+    }
+
+    if let Some(has_elevator) = search_params.has_elevator {
+        listing_qb
+            .push(" AND a.has_elevator = ")
+            .push_bind(has_elevator);
+        count_qb
+            .push(" AND a.has_elevator = ")
+            .push_bind(has_elevator);
+    }
+
+    if let Some(has_garden) = search_params.has_garden {
+        listing_qb
+            .push(" AND a.has_garden = ")
+            .push_bind(has_garden);
+        count_qb.push(" AND a.has_garden = ").push_bind(has_garden);
+    }
+
+    if let Some(has_parking) = search_params.has_parking {
+        listing_qb
+            .push(" AND a.has_parking = ")
+            .push_bind(has_parking);
+        count_qb
+            .push(" AND a.has_parking = ")
+            .push_bind(has_parking);
+    }
+
+    if let Some(has_balcony) = search_params.has_balcony {
+        listing_qb
+            .push(" AND a.has_balcony = ")
+            .push_bind(has_balcony);
+        count_qb
+            .push(" AND a.has_balcony = ")
+            .push_bind(has_balcony);
+    }
+
+    if let Some(has_ac) = search_params.has_ac {
+        listing_qb.push(" AND a.has_ac = ").push_bind(has_ac);
+        count_qb.push(" AND a.has_ac = ").push_bind(has_ac);
+    }
+
+    if let Some(has_heating) = search_params.has_heating {
+        listing_qb
+            .push(" AND a.has_heating = ")
+            .push_bind(has_heating);
+        count_qb
+            .push(" AND a.has_heating = ")
+            .push_bind(has_heating);
+    }
+
+    // Distance filters
+    if let Some(max_distance) = search_params.max_distance_to_kindergarten {
+        if max_distance > 0 {
+            listing_qb
+                .push(" AND a.distance_to_kindergarten <= ")
+                .push_bind(max_distance);
+            count_qb
+                .push(" AND a.distance_to_kindergarten <= ")
+                .push_bind(max_distance);
+        }
+    }
+
+    if let Some(max_distance) = search_params.max_distance_to_school {
+        if max_distance > 0 {
+            listing_qb
+                .push(" AND a.distance_to_school <= ")
+                .push_bind(max_distance);
+            count_qb
+                .push(" AND a.distance_to_school <= ")
+                .push_bind(max_distance);
+        }
+    }
+
+    if let Some(max_distance) = search_params.max_distance_to_hospital {
+        if max_distance > 0 {
+            listing_qb
+                .push(" AND a.distance_to_hospital <= ")
+                .push_bind(max_distance);
+            count_qb
+                .push(" AND a.distance_to_hospital <= ")
+                .push_bind(max_distance);
+        }
+    }
+
+    if let Some(max_distance) = search_params.max_distance_to_metro {
+        if max_distance > 0 {
+            listing_qb
+                .push(" AND a.distance_to_metro <= ")
+                .push_bind(max_distance);
+            count_qb
+                .push(" AND a.distance_to_metro <= ")
+                .push_bind(max_distance);
+        }
+    }
+
+    if let Some(max_distance) = search_params.max_distance_to_bus_stop {
+        if max_distance > 0 {
+            listing_qb
+                .push(" AND a.distance_to_bus_stop <= ")
+                .push_bind(max_distance);
+            count_qb
+                .push(" AND a.distance_to_bus_stop <= ")
+                .push_bind(max_distance);
+        }
+    }
+
+    if let Some(max_distance) = search_params.max_distance_to_shopping {
+        if max_distance > 0 {
+            listing_qb
+                .push(" AND a.distance_to_shopping <= ")
+                .push_bind(max_distance);
+            count_qb
+                .push(" AND a.distance_to_shopping <= ")
+                .push_bind(max_distance);
         }
     }
 
@@ -348,6 +508,136 @@ pub async fn get_many_listings(
 
     listing_qb.push(" OFFSET ").push_bind(pagination.offset);
     listing_qb.push(" LIMIT ").push_bind(pagination.limit);
+
+    // if let Some(q) = &search_params.q {
+    //     if !q.trim().is_empty() {
+    //         let like = format!("%{}%", q.trim());
+    //         listing_qb
+    //             .push(" AND (a.title ILIKE ")
+    //             .push_bind(like.clone());
+    //         listing_qb
+    //             .push(" OR a.description ILIKE ")
+    //             .push_bind(like.clone());
+    //         listing_qb
+    //             .push(" OR ad.city ILIKE ")
+    //             .push_bind(like.clone());
+    //         listing_qb
+    //             .push(" OR ad.street_address ILIKE ")
+    //             .push_bind(like.clone());
+    //         listing_qb.push(")");
+
+    //         count_qb
+    //             .push(" AND (a.title ILIKE ")
+    //             .push_bind(like.clone());
+    //         count_qb
+    //             .push(" OR a.description ILIKE ")
+    //             .push_bind(like.clone());
+    //         count_qb.push(" OR ad.city ILIKE ").push_bind(like.clone());
+    //         count_qb
+    //             .push(" OR ad.street_address ILIKE ")
+    //             .push_bind(like);
+    //         count_qb.push(")");
+    //     }
+    // }
+
+    // if !search_params.country.trim().is_empty() {
+    //     listing_qb
+    //         .push(" AND ad.country = ")
+    //         .push_bind(search_params.country.clone());
+    //     count_qb
+    //         .push(" AND ad.country = ")
+    //         .push_bind(search_params.country.clone());
+    // }
+
+    // if let Some(max_price) = search_params.max_price
+    //     && max_price > 0
+    // {
+    //     listing_qb
+    //         .push(" AND l.price <= ")
+    //         .push_bind(max_price.to_string())
+    //         .push("::numeric");
+    //     count_qb
+    //         .push(" AND l.price <= ")
+    //         .push_bind(max_price.to_string())
+    //         .push("::numeric");
+    // }
+
+    // if let Some(min_rooms) = search_params.min_rooms
+    //     && min_rooms > 0
+    // {
+    //     listing_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
+    //     count_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
+    // }
+
+    // if let Some(min_beds) = search_params.min_beds
+    //     && min_beds > 0
+    // {
+    //     listing_qb.push(" AND a.beds >= ").push_bind(min_beds);
+    //     count_qb.push(" AND a.beds >= ").push_bind(min_beds);
+    // }
+
+    // if let Some(min_baths) = search_params.min_baths
+    //     && min_baths > 0
+    // {
+    //     listing_qb.push(" AND a.baths >= ").push_bind(min_baths);
+    //     count_qb.push(" AND a.baths >= ").push_bind(min_baths);
+    // }
+
+    // if let Some(min_area) = search_params.min_area
+    //     && min_area > 0
+    // {
+    //     listing_qb.push(" AND a.area >= ").push_bind(min_area);
+    //     count_qb.push(" AND a.area >= ").push_bind(min_area);
+    // }
+
+    // if let Some(condition) = &search_params.condition {
+    //     match condition {
+    //         &ApartmentCondition::Old => {
+    //             listing_qb
+    //                 .push(" AND a.condition = ")
+    //                 .push_bind("old")
+    //                 .push("::apartment_condition");
+    //             count_qb
+    //                 .push(" AND a.condition = ")
+    //                 .push_bind("old")
+    //                 .push("::apartment_condition");
+    //         }
+    //         ApartmentCondition::Repaired => {
+    //             listing_qb
+    //                 .push(" AND a.condition = ")
+    //                 .push_bind("repaired")
+    //                 .push("::apartment_condition");
+    //             count_qb
+    //                 .push(" AND a.condition = ")
+    //                 .push_bind("repaired")
+    //                 .push("::apartment_condition");
+    //         }
+    //         ApartmentCondition::New => {
+    //             listing_qb
+    //                 .push(" AND a.condition = ")
+    //                 .push_bind("new")
+    //                 .push("::apartment_condition");
+    //             count_qb
+    //                 .push(" AND a.condition = ")
+    //                 .push_bind("new")
+    //                 .push("::apartment_condition");
+    //         }
+    //     }
+    // }
+
+    // // GROUP BY clause required for the aggregates
+    // listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
+
+    // if let Some(sort) = &search_params.sort {
+    //     match sort {
+    //         Sort::Newest => listing_qb.push(" ORDER BY l.created_at DESC "),
+    //         Sort::Cheap => listing_qb.push(" ORDER BY l.price ASC "),
+    //         Sort::Expensive => listing_qb.push(" ORDER BY l.price DESC "),
+    //     };
+    // }
+
+    // listing_qb.push(" OFFSET ").push_bind(pagination.offset);
+    // listing_qb.push(" LIMIT ").push_bind(pagination.limit);
 
     let total = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
@@ -436,6 +726,69 @@ pub async fn get_many_listings(
     // }
 
     Ok((listings, total))
+}
+
+async fn perform_hybrid_search(
+    query: &str,
+    qdrant: &Qdrant,
+    ai: &AI,
+) -> Result<Option<Vec<Uuid>>, AppError> {
+    // Generate text embedding
+    let text_embedding = ai.embed_text(query)?;
+
+    let res = qdrant
+        .query(
+            QueryPointsBuilder::new("listings")
+                .query(VectorInput::new_multi(vec![text_embedding.clone()])),
+        )
+        .await?;
+
+    let search_by_images = qdrant
+        .query(
+            QueryPointsBuilder::new("listings")
+                .query(text_embedding.clone())
+                .limit(3)
+                .using("image"),
+        )
+        .await?;
+
+    // Search in text collection
+    let text_results = qdrant
+        .search_points(
+            SearchPointsBuilder::new("listings_text", text_embedding, 100)
+                .filter(Filter::must([Condition::matches(
+                    "country",
+                    "London".to_string(),
+                )]))
+                .with_payload(true)
+                .score_threshold(0.5),
+        )
+        .await?;
+
+    // Collect listing IDs with scores
+    let mut scores: HashMap<Uuid, f32> = HashMap::new();
+
+    for point in text_results.result {
+        if let Some(payload) = point.payload.get("listing_id") {
+            if let Some(Kind::StringValue(id_str)) = &payload.kind {
+                if let Ok(listing_id) = Uuid::parse_str(id_str) {
+                    *scores.entry(listing_id).or_insert(0.0) += point.score;
+                }
+            }
+        }
+    }
+
+    // Sort by combined score
+    let mut sorted_ids: Vec<(Uuid, f32)> = scores.into_iter().collect();
+    sorted_ids.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+    let listing_ids: Vec<Uuid> = sorted_ids.into_iter().map(|(id, _)| id).collect();
+
+    if listing_ids.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(listing_ids))
+    }
 }
 
 pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<ListingOut, AppError> {
@@ -629,6 +982,8 @@ pub async fn create_listing(
     owner_id: Uuid,
     pool: &PgPool,
     gcs: GoogleCloudStorage,
+    qdrant: Qdrant,
+    ai: AI,
     mut multipart: Multipart,
 ) -> Result<(), AppError> {
     let mut listing_json: Option<String> = None;
@@ -807,6 +1162,50 @@ pub async fn create_listing(
     }
 
     tx.commit().await?;
+
+    let point_id = PointId::from(listing_id.to_string());
+    let payload = Payload::try_from(json!({
+        "apartment_id": apartment_id.to_string(),
+        "country": listing_in.apartment.address.country
+    }))
+    .map_err(|e| AppError::QdrantError(e))?;
+
+    let text_content = format!(
+        "{} {}",
+        listing_in.apartment.title,
+        listing_in.apartment.description.as_deref().unwrap_or("")
+    );
+    let text_vector = ai.embed_text(&text_content.trim())?;
+    let text_points = vec![PointStruct::new(
+        point_id.clone(),
+        NamedVectors::default().add_vector("text", Vector::new_dense(text_vector)),
+        payload.clone(),
+    )];
+    qdrant
+        .upsert_points(UpsertPointsBuilder::new("listings_text", text_points).wait(true))
+        .await?;
+
+    let mut image_vectors: Vec<Vec<f32>> = Vec::new();
+    for bytes in &picture_files {
+        match ai.embed_image_bytes(bytes) {
+            Ok(vec) => image_vectors.push(vec),
+            Err(e) => {
+                // Optionally log this error
+                debug!("Failed to embed image, skipping: {}", e);
+            }
+        }
+    }
+
+    if !image_vectors.is_empty() {
+        let image_points = vec![PointStruct::new(
+            point_id,
+            NamedVectors::default().add_vector("image", Vector::new_multi(image_vectors)),
+            payload,
+        )];
+        qdrant
+            .upsert_points(UpsertPointsBuilder::new("listings_images", image_points).wait(true))
+            .await?;
+    }
 
     Ok(())
 }

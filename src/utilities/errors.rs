@@ -29,10 +29,16 @@ pub enum AppError {
     MissingQdrantApiKeyError,
     #[error("Qdrant error: {0}")]
     QdrantError(#[from] qdrant_client::QdrantError),
+    #[error("SentenceEmbeddingsModel creation error: {0}")]
+    SentenceEmbeddingsModelCreationError(#[from] rust_bert::RustBertError),
     #[error("ImageEmbedding creation error")]
     ImageEmbeddingCreationError,
     #[error("TextEmbedding creation error")]
     TextEmbeddingCreationError,
+    #[error("Embedding error")]
+    EmbeddingError,
+    #[error("Tch image loading error: {0}")]
+    TchImageLoadingError(#[from] tch::TchError),
     #[error("Bcrypt error: {0}")]
     BcryptError(#[from] bcrypt::BcryptError),
     #[error("Object storage error: {0}")]
@@ -243,6 +249,9 @@ impl IntoResponse for AppError {
                 "Missing qdrant api key error".to_string(),
             ),
             Self::QdrantError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::SentenceEmbeddingsModelCreationError(e) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            }
             Self::ImageEmbeddingCreationError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "ImageEmbedding creation error".to_string(),
@@ -251,6 +260,11 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "TextEmbedding creation error".to_string(),
             ),
+            Self::EmbeddingError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Embedding error".to_string(),
+            ),
+            Self::TchImageLoadingError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::BcryptError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::ObjectStorageError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             Self::Request(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),

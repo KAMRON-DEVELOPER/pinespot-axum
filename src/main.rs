@@ -213,7 +213,7 @@ async fn shutdown_signal() {
 //                 .map(|matched_path| matched_path.as_str());
 //             tracing::debug_span!("request ", %method, %uri, matched_path)
 //         })
-//         // By default `TraceLayer` will log 5xx responses but we're doing our specific
+//         // By default `TraceLayer` will log 5xx responses, but we're doing our specific
 //         // logging of errors so disable that
 //         .on_failure(()),
 // )

@@ -1,53 +1,58 @@
-use anyhow::Ok;
+use std::sync::{Arc, Mutex};
+
+use ::image::DynamicImage;
 use fastembed::{
     EmbeddingModel, ImageEmbedding, ImageEmbeddingModel, ImageInitOptions, InitOptions,
-    InitOptionsUserDefined, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
+    TextEmbedding,
 };
 use rust_bert::pipelines::sentence_embeddings::{
-    SentenceEmbeddingsBuilder, SentenceEmbeddingsModelType,
+    SentenceEmbeddingsBuilder, SentenceEmbeddingsModel, SentenceEmbeddingsModelType,
 };
 use tch::Device;
 
 use crate::utilities::errors::AppError;
 
-#[derive(Clone. Copy, Debug)]
+#[derive(Clone)]
 pub struct AI {
-    pub text_model: TextEmbedding,
-    pub image_model: ImageEmbeddingModel,
+    pub text_model: Arc<Mutex<TextEmbedding>>,
+    pub image_model: Arc<Mutex<ImageEmbedding>>,
 }
 
 impl AI {
     pub fn new() -> Result<Self, AppError> {
-        let device = Device::cuda_if_available();
-
-        // Model for text embeddings
         let text_model = build_fastembed_text_embedding()?;
-
-        // Multi-modal model for both image and text query embeddings
         let image_model = build_fastembed_image_embedding()?;
 
         Ok(Self {
-            text_model,
-            image_model,
+            text_model: Arc::new(Mutex::new(text_model)),
+            image_model: Arc::new(Mutex::new(image_model)),
         })
     }
 
     // Generate embedding for text
     pub fn embed_text(&self, text: &str) -> Result<Vec<f32>, AppError> {
-        let embedding = self.text_model.encode(&[text]);
-        Ok(embedding.into_iter().next().unwrap())
-    }
-
-    // Generate embedding for an image from its bytes
-    pub fn embed_image(&self, image_bytes: &[u8]) -> Result<Vec<f32>, AppError> {
-        let image = image::load_from_memory(image_bytes)?.to_rgb8();
-        let embeddings = self.image_model.encode_image(&[image])?;
+        let texts = vec![text];
+        let mut model = self.text_model.lock().unwrap();
+        let embeddings: Vec<Vec<f32>> = model
+            .embed(texts, None)
+            .map_err(|_| AppError::EmbeddingError)?;
         Ok(embeddings.into_iter().next().unwrap())
     }
 
-    // Generate embedding for the user's search query (using the same model as images)
-    pub fn embed_query(&self, query: &str) -> Result<Vec<f32>, AppError> {
-        let embeddings = self.image_model.encode_text(&[query])?;
+    // Generate embedding for an image from its bytes
+    pub fn embed_image_bytes(&self, image_bytes: &[u8]) -> Result<Vec<f32>, AppError> {
+        let mut model = self.image_model.lock().unwrap();
+        let embeddings: Vec<Vec<f32>> = model
+            .embed_bytes(&[image_bytes], None)
+            .map_err(|_| AppError::EmbeddingError)?;
+        Ok(embeddings.into_iter().next().unwrap())
+    }
+
+    pub fn embed_dynamic_image(&self, img: DynamicImage) -> Result<Vec<f32>, AppError> {
+        let mut model = self.image_model.lock().unwrap();
+        let embeddings: Vec<Vec<f32>> = model
+            .embed_images(vec![img])
+            .map_err(|_| AppError::EmbeddingError)?;
         Ok(embeddings.into_iter().next().unwrap())
     }
 }
@@ -64,7 +69,8 @@ pub async fn build_rust_bert_sentence_embedding() -> Result<SentenceEmbeddingsMo
     let device = Device::cuda_if_available();
     let model = SentenceEmbeddingsBuilder::remote(SentenceEmbeddingsModelType::AllMiniLmL12V2)
         .with_device(device)
-        .create_model()?;
+        .create_model()
+        .map_err(|e| AppError::SentenceEmbeddingsModelCreationError(e))?;
 
     // let sentences = ["this is an example sentence", "each sentence is converted"];
     // let output = model.encode(&sentences)?;
@@ -94,7 +100,7 @@ pub fn build_fastembed_text_embedding() -> Result<TextEmbedding, AppError> {
     //     Alibaba-NLP/gte-base-en-v1.5
     //     Alibaba-NLP/gte-large-en-v1.5
 
-    let mut model = TextEmbedding::try_new(
+    let model = TextEmbedding::try_new(
         InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
     )
     .map_err(|_| AppError::TextEmbeddingCreationError)?;
@@ -124,7 +130,7 @@ pub fn build_fastembed_image_embedding() -> Result<ImageEmbedding, AppError> {
     //     Qdrant/Unicom-ViT-B-32
     //     nomic-ai/nomic-embed-vision-v1.5
 
-    let mut model = ImageEmbedding::try_new(
+    let model = ImageEmbedding::try_new(
         ImageInitOptions::new(ImageEmbeddingModel::ClipVitB32).with_show_download_progress(true),
     )
     .map_err(|_| AppError::ImageEmbeddingCreationError)?;

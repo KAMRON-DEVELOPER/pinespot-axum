@@ -5,12 +5,14 @@ use crate::features::listings::schemas::{
 use crate::features::schemas::{ListingQuery, Sort};
 use crate::features::users::models::{UserRole, UserStatus};
 use crate::features::users::schemas::UserOut;
+use crate::services::ai::AI;
 use crate::utilities::errors::AppError;
 use axum::extract::Multipart;
 use chrono::{DateTime, Utc};
 use object_store::gcp::GoogleCloudStorage;
 use object_store::{ObjectStore, path::Path as ObjectStorePath};
 
+use qdrant_client::Qdrant;
 use sqlx::QueryBuilder;
 use sqlx::{FromRow, PgPool, types::BigDecimal, types::Json};
 use tracing::debug;
@@ -89,6 +91,8 @@ pub struct ListingJoined {
 pub async fn get_many_listings(
     pool: &PgPool,
     listing_query: &ListingQuery,
+    qdrant: Qdrant,
+    ai: AI,
 ) -> Result<(Vec<ListingOut>, i64), sqlx::Error> {
     let ListingQuery {
         pagination,

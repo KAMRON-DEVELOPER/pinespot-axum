@@ -21,7 +21,7 @@ use crate::{
         schemas::ListingQuery,
         users::schemas::RedirectResponse,
     },
-    services::database::Database,
+    services::{ai::AI, database::Database},
     utilities::{cookie::OptionalOAuthUserIdCookie, errors::AppError, jwt::Claims},
 };
 
@@ -62,6 +62,7 @@ pub async fn get_many_listings_handler(
     jar: PrivateCookieJar,
     State(database): State<Database>,
     State(qdrant): State<Qdrant>,
+    State(ai): State<AI>,
     Query(listing_query): Query<ListingQuery>,
     OptionalOAuthUserIdCookie(optional_oauth_user_id_cookie): OptionalOAuthUserIdCookie,
 ) -> Result<Response, AppError> {
@@ -76,7 +77,7 @@ pub async fn get_many_listings_handler(
 
     debug!("country: {}", listing_query.search_params.country);
 
-    let (listings, total) = get_many_listings(&database.pool, &listing_query).await?;
+    let (listings, total) = get_many_listings(&database.pool, &listing_query, qdrant, ai).await?;
 
     Ok(Json(ListingResponse { listings, total }).into_response())
 }

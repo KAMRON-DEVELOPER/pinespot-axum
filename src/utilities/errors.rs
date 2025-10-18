@@ -29,6 +29,8 @@ pub enum AppError {
     MissingQdrantApiKeyError,
     #[error("Qdrant error: {0}")]
     QdrantError(#[from] qdrant_client::QdrantError),
+    #[error("Vector search error: {0}")]
+    VectorSearchError(String),
     #[error("SentenceEmbeddingsModel creation error: {0}")]
     SentenceEmbeddingsModelCreationError(#[from] rust_bert::RustBertError),
     #[error("ImageEmbedding creation error")]
@@ -249,6 +251,10 @@ impl IntoResponse for AppError {
                 "Missing qdrant api key error".to_string(),
             ),
             Self::QdrantError(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            Self::VectorSearchError(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Vector search error, {}", e),
+            ),
             Self::SentenceEmbeddingsModelCreationError(e) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
             }

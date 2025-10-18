@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::features::listings::models::{ApartmentCondition, SaleType};
 use crate::features::listings::schemas::{
     AddressOut, AmenityOut, ApartmentOut, ListingIn, ListingOut, PictureOut, TagOut,
@@ -14,11 +12,9 @@ use chrono::{DateTime, Utc};
 use object_store::gcp::GoogleCloudStorage;
 use object_store::{ObjectStore, path::Path as ObjectStorePath};
 
-use qdrant_client::qdrant::value::Kind;
-use qdrant_client::qdrant::vectors::VectorsOptions;
 use qdrant_client::qdrant::{
-    Condition, Filter, NamedVectors, PointId, PointStruct, QueryPointsBuilder, SearchPoints,
-    SearchPointsBuilder, UpsertPointsBuilder, Vector, VectorInput, Vectors,
+    Condition, Filter, Fusion, NamedVectors, PointId, PointStruct, PrefetchQueryBuilder, Query,
+    QueryPointsBuilder, UpsertPointsBuilder, Vector,
 };
 use qdrant_client::{Payload, Qdrant};
 use serde_json::json;
@@ -102,31 +98,21 @@ pub async fn get_many_listings(
     listing_query: &ListingQuery,
     qdrant: Qdrant,
     ai: AI,
-) -> Result<(Vec<ListingOut>, i64), sqlx::Error> {
+) -> Result<(Vec<ListingOut>, i64), AppError> {
     let ListingQuery {
         pagination,
         search_params,
     } = listing_query;
-
-    let mut listing_ids: Option<Vec<Uuid>> = None;
-
-    if let Some(q) = &search_params.q {
+    // Perform vector search if query exists
+    let vector_matched_ids = if let Some(q) = &search_params.q {
         if !q.trim().is_empty() {
-            // Convert text query to embedding
-            let query_vector = ai.embed_text(q).unwrap_or_else(|_| Vec::new());
-
-            // Perform vector search if there's a text query
-            let vector_matched_ids = if let Some(q) = &search_params.q {
-                if !q.trim().is_empty() {
-                    perform_hybrid_search(q.trim(), &qdrant, &ai).await?
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
+            perform_hybrid_search(q.trim(), search_params.country.clone(), &qdrant, &ai).await?
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
     let select_base = r#"
     SELECT
@@ -498,146 +484,37 @@ pub async fn get_many_listings(
     // GROUP BY clause required for the aggregates
     listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
 
-    if let Some(sort) = &search_params.sort {
+    // Sorting - When vector search is active, preserve vector search order
+    if vector_matched_ids.is_some() {
+        // Create a custom ordering based on the vector search results
+        // This maintains the relevance ranking from the hybrid search
+        if let Some(ids) = &vector_matched_ids {
+            if !ids.is_empty() {
+                listing_qb.push(" ORDER BY array_position(ARRAY[");
+                for (i, id) in ids.iter().enumerate() {
+                    if i > 0 {
+                        listing_qb.push(",");
+                    }
+                    listing_qb.push_bind(id);
+                    listing_qb.push("::uuid");
+                }
+                listing_qb.push("], l.id)");
+            }
+        }
+    } else if let Some(sort) = &search_params.sort {
+        // Regular sorting when no vector search
         match sort {
             Sort::Newest => listing_qb.push(" ORDER BY l.created_at DESC "),
             Sort::Cheap => listing_qb.push(" ORDER BY l.price ASC "),
             Sort::Expensive => listing_qb.push(" ORDER BY l.price DESC "),
         };
+    } else {
+        // Default sorting
+        listing_qb.push(" ORDER BY l.created_at DESC ");
     }
 
     listing_qb.push(" OFFSET ").push_bind(pagination.offset);
     listing_qb.push(" LIMIT ").push_bind(pagination.limit);
-
-    // if let Some(q) = &search_params.q {
-    //     if !q.trim().is_empty() {
-    //         let like = format!("%{}%", q.trim());
-    //         listing_qb
-    //             .push(" AND (a.title ILIKE ")
-    //             .push_bind(like.clone());
-    //         listing_qb
-    //             .push(" OR a.description ILIKE ")
-    //             .push_bind(like.clone());
-    //         listing_qb
-    //             .push(" OR ad.city ILIKE ")
-    //             .push_bind(like.clone());
-    //         listing_qb
-    //             .push(" OR ad.street_address ILIKE ")
-    //             .push_bind(like.clone());
-    //         listing_qb.push(")");
-
-    //         count_qb
-    //             .push(" AND (a.title ILIKE ")
-    //             .push_bind(like.clone());
-    //         count_qb
-    //             .push(" OR a.description ILIKE ")
-    //             .push_bind(like.clone());
-    //         count_qb.push(" OR ad.city ILIKE ").push_bind(like.clone());
-    //         count_qb
-    //             .push(" OR ad.street_address ILIKE ")
-    //             .push_bind(like);
-    //         count_qb.push(")");
-    //     }
-    // }
-
-    // if !search_params.country.trim().is_empty() {
-    //     listing_qb
-    //         .push(" AND ad.country = ")
-    //         .push_bind(search_params.country.clone());
-    //     count_qb
-    //         .push(" AND ad.country = ")
-    //         .push_bind(search_params.country.clone());
-    // }
-
-    // if let Some(max_price) = search_params.max_price
-    //     && max_price > 0
-    // {
-    //     listing_qb
-    //         .push(" AND l.price <= ")
-    //         .push_bind(max_price.to_string())
-    //         .push("::numeric");
-    //     count_qb
-    //         .push(" AND l.price <= ")
-    //         .push_bind(max_price.to_string())
-    //         .push("::numeric");
-    // }
-
-    // if let Some(min_rooms) = search_params.min_rooms
-    //     && min_rooms > 0
-    // {
-    //     listing_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
-    //     count_qb.push(" AND a.rooms >= ").push_bind(min_rooms);
-    // }
-
-    // if let Some(min_beds) = search_params.min_beds
-    //     && min_beds > 0
-    // {
-    //     listing_qb.push(" AND a.beds >= ").push_bind(min_beds);
-    //     count_qb.push(" AND a.beds >= ").push_bind(min_beds);
-    // }
-
-    // if let Some(min_baths) = search_params.min_baths
-    //     && min_baths > 0
-    // {
-    //     listing_qb.push(" AND a.baths >= ").push_bind(min_baths);
-    //     count_qb.push(" AND a.baths >= ").push_bind(min_baths);
-    // }
-
-    // if let Some(min_area) = search_params.min_area
-    //     && min_area > 0
-    // {
-    //     listing_qb.push(" AND a.area >= ").push_bind(min_area);
-    //     count_qb.push(" AND a.area >= ").push_bind(min_area);
-    // }
-
-    // if let Some(condition) = &search_params.condition {
-    //     match condition {
-    //         &ApartmentCondition::Old => {
-    //             listing_qb
-    //                 .push(" AND a.condition = ")
-    //                 .push_bind("old")
-    //                 .push("::apartment_condition");
-    //             count_qb
-    //                 .push(" AND a.condition = ")
-    //                 .push_bind("old")
-    //                 .push("::apartment_condition");
-    //         }
-    //         ApartmentCondition::Repaired => {
-    //             listing_qb
-    //                 .push(" AND a.condition = ")
-    //                 .push_bind("repaired")
-    //                 .push("::apartment_condition");
-    //             count_qb
-    //                 .push(" AND a.condition = ")
-    //                 .push_bind("repaired")
-    //                 .push("::apartment_condition");
-    //         }
-    //         ApartmentCondition::New => {
-    //             listing_qb
-    //                 .push(" AND a.condition = ")
-    //                 .push_bind("new")
-    //                 .push("::apartment_condition");
-    //             count_qb
-    //                 .push(" AND a.condition = ")
-    //                 .push_bind("new")
-    //                 .push("::apartment_condition");
-    //         }
-    //     }
-    // }
-
-    // // GROUP BY clause required for the aggregates
-    // listing_qb.push(" GROUP BY l.id, u.id, a.id, ad.id ");
-
-    // if let Some(sort) = &search_params.sort {
-    //     match sort {
-    //         Sort::Newest => listing_qb.push(" ORDER BY l.created_at DESC "),
-    //         Sort::Cheap => listing_qb.push(" ORDER BY l.price ASC "),
-    //         Sort::Expensive => listing_qb.push(" ORDER BY l.price DESC "),
-    //     };
-    // }
-
-    // listing_qb.push(" OFFSET ").push_bind(pagination.offset);
-    // listing_qb.push(" LIMIT ").push_bind(pagination.limit);
 
     let total = count_qb.build_query_scalar::<i64>().fetch_one(pool).await?;
 
@@ -730,65 +607,116 @@ pub async fn get_many_listings(
 
 async fn perform_hybrid_search(
     query: &str,
+    country: String,
     qdrant: &Qdrant,
     ai: &AI,
 ) -> Result<Option<Vec<Uuid>>, AppError> {
+    debug!("Starting hybrid search for query: '{}'", query);
+
     // Generate text embedding
     let text_embedding = ai.embed_text(query)?;
+    debug!(
+        "Generated text embedding with {} dimensions",
+        text_embedding.len()
+    );
 
-    let res = qdrant
-        .query(
-            QueryPointsBuilder::new("listings")
-                .query(VectorInput::new_multi(vec![text_embedding.clone()])),
-        )
-        .await?;
+    let mut conds = vec![];
+    if !country.trim().is_empty() {
+        conds.push(Condition::matches("country", country));
+    }
+    let filter = Filter::must(conds);
 
-    let search_by_images = qdrant
-        .query(
-            QueryPointsBuilder::new("listings")
+    // Use Qdrant's Query API with fusion for hybrid search
+    // This combines text and image vector searches with proper scoring
+    let query_request = QueryPointsBuilder::new("listings")
+        .query(Query::new_fusion(Fusion::Rrf)) // Reciprocal Rank Fusion
+        .add_prefetch(
+            PrefetchQueryBuilder::default()
                 .query(text_embedding.clone())
-                .limit(3)
-                .using("image"),
+                .using("text")
+                .limit(100u64), // Get top 100 from text search
         )
-        .await?;
-
-    // Search in text collection
-    let text_results = qdrant
-        .search_points(
-            SearchPointsBuilder::new("listings_text", text_embedding, 100)
-                .filter(Filter::must([Condition::matches(
-                    "country",
-                    "London".to_string(),
-                )]))
-                .with_payload(true)
-                .score_threshold(0.5),
+        .add_prefetch(
+            PrefetchQueryBuilder::default()
+                .query(text_embedding)
+                .using("image")
+                .limit(50u64), // Get top 50 from image search
         )
-        .await?;
+        .limit(50u64) // Final limit after fusion
+        .filter(filter)
+        .with_payload(true);
 
-    // Collect listing IDs with scores
-    let mut scores: HashMap<Uuid, f32> = HashMap::new();
+    // Execute the query
+    let search_result = qdrant.query(query_request.build()).await.map_err(|e| {
+        debug!("Qdrant query failed: {:?}", e);
+        AppError::VectorSearchError(e.to_string())
+    })?;
 
-    for point in text_results.result {
-        if let Some(payload) = point.payload.get("listing_id") {
-            if let Some(Kind::StringValue(id_str)) = &payload.kind {
-                if let Ok(listing_id) = Uuid::parse_str(id_str) {
-                    *scores.entry(listing_id).or_insert(0.0) += point.score;
-                }
-            }
-        }
+    debug!(
+        "Hybrid search returned {} results",
+        search_result.result.len()
+    );
+
+    if search_result.result.is_empty() {
+        debug!("No results found in hybrid search");
+        return Ok(None);
     }
 
-    // Sort by combined score
-    let mut sorted_ids: Vec<(Uuid, f32)> = scores.into_iter().collect();
-    sorted_ids.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    // Extract listing IDs preserving the relevance order from fusion
+    let listing_ids: Vec<Uuid> = search_result
+        .result
+        .into_iter()
+        .filter_map(|point| {
+            point.id.and_then(|id| {
+                let id_str = match id.point_id_options {
+                    Some(qdrant_client::qdrant::point_id::PointIdOptions::Uuid(uuid)) => uuid,
+                    Some(qdrant_client::qdrant::point_id::PointIdOptions::Num(num)) => {
+                        num.to_string()
+                    }
+                    None => return None,
+                };
 
-    let listing_ids: Vec<Uuid> = sorted_ids.into_iter().map(|(id, _)| id).collect();
+                Uuid::parse_str(&id_str).ok()
+            })
+        })
+        .collect();
 
-    if listing_ids.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(listing_ids))
-    }
+    debug!(
+        "Hybrid search returning {} unique listings in relevance order",
+        listing_ids.len()
+    );
+
+    Ok(Some(listing_ids))
+
+    // let searches = vec![
+    //     QueryPointsBuilder::new("listings")
+    //         .query(text_embedding)
+    //         .limit(20)
+    //         .filter(filter.clone())
+    //         .using("text")
+    //         .build(),
+    //     QueryPointsBuilder::new("listings")
+    //         .query(VectorInput::new_multi(vec![text_embedding]))
+    //         .limit(20)
+    //         .filter(filter)
+    //         .using("image")
+    //         .build(),
+    // ];
+
+    // let query_batch_response = qdrant
+    //     .query_batch(QueryBatchPointsBuilder::new("listings", searches))
+    //     .await?;
+
+    // // Search using text vector
+    // let text_search = qdrant
+    //     .search_points(
+    //         SearchPointsBuilder::new("listings", text_embedding.clone(), 50)
+    //             .filter(Filter::must(conds.clone()))
+    //             .vector_name("text")
+    //             .with_payload(true)
+    //             .score_threshold(0.3),
+    //     )
+    //     .await?;
 }
 
 pub async fn get_one_listing(pool: &PgPool, listing_id: &Uuid) -> Result<ListingOut, AppError> {
@@ -1164,11 +1092,6 @@ pub async fn create_listing(
     tx.commit().await?;
 
     let point_id = PointId::from(listing_id.to_string());
-    let payload = Payload::try_from(json!({
-        "apartment_id": apartment_id.to_string(),
-        "country": listing_in.apartment.address.country
-    }))
-    .map_err(|e| AppError::QdrantError(e))?;
 
     let text_content = format!(
         "{} {}",
@@ -1176,36 +1099,31 @@ pub async fn create_listing(
         listing_in.apartment.description.as_deref().unwrap_or("")
     );
     let text_vector = ai.embed_text(&text_content.trim())?;
-    let text_points = vec![PointStruct::new(
-        point_id.clone(),
-        NamedVectors::default().add_vector("text", Vector::new_dense(text_vector)),
-        payload.clone(),
-    )];
-    qdrant
-        .upsert_points(UpsertPointsBuilder::new("listings_text", text_points).wait(true))
-        .await?;
 
     let mut image_vectors: Vec<Vec<f32>> = Vec::new();
     for bytes in &picture_files {
         match ai.embed_image_bytes(bytes) {
             Ok(vec) => image_vectors.push(vec),
             Err(e) => {
-                // Optionally log this error
                 debug!("Failed to embed image, skipping: {}", e);
             }
         }
     }
 
-    if !image_vectors.is_empty() {
-        let image_points = vec![PointStruct::new(
-            point_id,
-            NamedVectors::default().add_vector("image", Vector::new_multi(image_vectors)),
-            payload,
-        )];
-        qdrant
-            .upsert_points(UpsertPointsBuilder::new("listings_images", image_points).wait(true))
-            .await?;
-    }
+    let named_vectors = NamedVectors::default()
+        .add_vector("text", Vector::new_dense(text_vector))
+        .add_vector("image", Vector::new_multi(image_vectors));
+
+    let payload = Payload::try_from(json!({
+        "listing_id": listing_id.to_string(),
+        "country": listing_in.apartment.address.country
+    }))?;
+
+    let points = vec![PointStruct::new(point_id, named_vectors, payload)];
+
+    qdrant
+        .upsert_points(UpsertPointsBuilder::new("listings", points).wait(true))
+        .await?;
 
     Ok(())
 }

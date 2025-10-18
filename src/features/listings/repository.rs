@@ -629,22 +629,24 @@ async fn perform_hybrid_search(
     // Use Qdrant's Query API with fusion for hybrid search
     // This combines text and image vector searches with proper scoring
     let query_request = QueryPointsBuilder::new("listings")
-        .query(Query::new_fusion(Fusion::Rrf)) // Reciprocal Rank Fusion
         .add_prefetch(
             PrefetchQueryBuilder::default()
                 .query(text_embedding.clone())
+                // .query(Query::new_nearest(text_embedding.clone()))
                 .using("text")
                 .limit(100u64), // Get top 100 from text search
         )
         .add_prefetch(
             PrefetchQueryBuilder::default()
                 .query(text_embedding)
+                // .query(Query::new_nearest(text_embedding))
                 .using("image")
                 .limit(50u64), // Get top 50 from image search
         )
         .limit(50u64) // Final limit after fusion
         .filter(filter)
-        .with_payload(true);
+        .with_payload(true)
+        .query(Query::new_fusion(Fusion::Rrf)); // Reciprocal Rank Fusion
 
     // Execute the query
     let search_result = qdrant.query(query_request.build()).await.map_err(|e| {

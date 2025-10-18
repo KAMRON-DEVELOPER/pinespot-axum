@@ -18,14 +18,16 @@ pub async fn build_qdrant(config: &Config) -> Result<Qdrant, AppError> {
     )
     .api_key(
         config
-            .qdrant_url
+            .qdrant_api_key
             .clone()
             .ok_or_else(|| AppError::MissingQdrantApiKeyError)?,
     )
     .timeout(std::time::Duration::from_secs(10))
     .build()?;
 
-    let _health_check_reply = client.health_check().await?;
+    let health_check_reply = client.health_check().await?;
+
+    info!("Qdrant health check reply: {:#?}", health_check_reply);
 
     // Initialize collections
     initialize_collections(&client).await?;

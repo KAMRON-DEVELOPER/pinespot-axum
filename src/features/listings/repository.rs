@@ -925,9 +925,12 @@ pub async fn create_listing(
         .await
         .map_err(|_| AppError::InvalidFormData("Failed to read multipart stream".into()))?
     {
+        debug!(
+            "name: {:?}, file_name: {:?}",
+            field.name(),
+            field.file_name()
+        );
         let name = field.name().unwrap_or_default().to_string();
-
-        debug!("multipart.next_field() name: {}", name);
 
         match name.as_str() {
             "listing_data" => {

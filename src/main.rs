@@ -22,7 +22,7 @@ use crate::{
     },
 };
 use axum::{
-    extract::ConnectInfo,
+    extract::{ConnectInfo, DefaultBodyLimit},
     http::{self, HeaderName, HeaderValue, Method, StatusCode, header},
     response::IntoResponse,
 };
@@ -148,6 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .merge(listings::routes())
         .merge(users::routes())
         .fallback(not_found_handler)
+        .layer(DefaultBodyLimit::max(50 * 1024 * 1024))
         .layer(cors)
         .layer(tracing_layer)
         .with_state(app_state);

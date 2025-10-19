@@ -125,6 +125,8 @@ pub enum AppError {
     OAuthUserIdExpiredError,
     #[error("Json validation error")]
     JsonValidationError,
+    #[error("Invalid form data, {0}")]
+    InvalidFormData(String),
     #[error("Missing pkce code verifier error")]
     MissingPkceCodeVerifierError,
     #[error("Nonce not found error")]
@@ -414,6 +416,7 @@ impl IntoResponse for AppError {
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "Json validation error".to_string(),
             ),
+            Self::InvalidFormData(e) => (StatusCode::UNPROCESSABLE_ENTITY, e),
             Self::MissingPkceCodeVerifierError => (
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "Missing pkce code verifier error".to_string(),

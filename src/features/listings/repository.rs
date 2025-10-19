@@ -20,7 +20,7 @@ use qdrant_client::{Payload, Qdrant};
 use serde_json::json;
 use sqlx::QueryBuilder;
 use sqlx::{FromRow, PgPool, types::BigDecimal, types::Json};
-use tracing::debug;
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 #[derive(FromRow)]
@@ -919,20 +919,33 @@ pub async fn create_listing(
     let mut listing_json: Option<String> = None;
     let mut picture_files: Vec<bytes::Bytes> = Vec::new();
 
-    // Parse multipart
-    while let Some(field) = multipart.next_field().await.unwrap() {
-        let name = field.name().unwrap().to_string();
+    // Parse multipart safely
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| AppError::InvalidFormData("Failed to read multipart stream".into()))?
+    {
+        let name = field.name().unwrap_or_default().to_string();
 
         debug!("multipart.next_field() name: {}", name);
 
         match name.as_str() {
             "listing_data" => {
-                listing_json = Some(field.text().await.unwrap());
+                let text = field.text().await.map_err(|_| {
+                    AppError::InvalidFormData("Failed to read listing_data field".into())
+                })?;
+                listing_json = Some(text);
             }
             "pictures" => {
-                picture_files.push(field.bytes().await.unwrap());
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|_| AppError::InvalidFormData("Failed to read picture file".into()))?;
+                picture_files.push(bytes);
             }
-            _ => {}
+            _ => {
+                warn!("Unknown multipart field: {}", name);
+            }
         }
     }
 
